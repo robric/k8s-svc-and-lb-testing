@@ -12,3 +12,7 @@ curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/dep
 ```
 
 This will create a multi-node cluster made up of 3VM based on k3s. 
+
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-svc.yaml
+```
