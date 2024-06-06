@@ -7,7 +7,7 @@ Create cloud init and 3 VMs on ubuntu host.
 
 # Create cloud-init.yaml
 
-echo -e "#cloud-config\nusers:\n  - default\n  - name: ubuntu\n    ssh-authorized-keys:\n      - $(cat ~/.ssh/id_rsa.pub)\nwrite_files:\n  - path: /home/ubuntu/.bashrc\n    content: |\n      source <(kubectl completion bash)\n      alias k=kubectl\n " > cloud-init.yaml
+echo -e "#cloud-config\nusers:\n  - default\n  - name: ubuntu\n    ssh-authorized-keys:\n      - $(cat ~/.ssh/id_rsa.pub)\nruncmd:\n - echo 'source <(kubectl completion bash)' >> /home/ubuntu/.bashrc" > cloud-init.yaml
 
 # Define variable and launch VMs
 
