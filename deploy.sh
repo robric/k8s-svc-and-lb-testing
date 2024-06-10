@@ -2,7 +2,17 @@
 set -x
 # Create cloud-init.yaml
 
-echo -e "#cloud-config\nusers:\n  - default\n  - name: ubuntu\n    ssh-authorized-keys:\n      - $(cat ~/.ssh/id_rsa.pub)\nruncmd:\n - echo 'source <(kubectl completion bash)' >> /home/ubuntu/.bashrc" > cloud-init.yaml
+cat > cloud-init.yaml <<EOF
+#cloud-config
+users:
+  - default
+  - name: ubuntu
+    ssh-authorized-keys:
+      - $(cat ~/.ssh/id_rsa.pub)
+runcmd:
+ - echo 'source <(kubectl completion bash)' >> /home/ubuntu/.bashrc
+EOF
+
 
 # Define variable and launch VMs
 
@@ -41,7 +51,6 @@ for i in $(seq 2 $NUM_NODES); do
   echo "Joining vm$i to the cluster... "
   sleep 5
   multipass exec vm$i -- bash -c "curl -sfL https://get.k3s.io | K3S_TOKEN=\"12345678\" K3S_KUBECONFIG_MODE=\"644\" K3S_URL=https://$FIRST_NODE_IP:6443 sh -"
-#  multipass exec vm$i -- bash -c 'curl -sfL https://get.k3s.io | K3S_TOKEN="12345678" K3S_KUBECONFIG_MODE="644" K3S_URL=https://$FIRST_NODE_IP:6443 sh -'
 done
 
 echo "K3s cluster deployment completed."
