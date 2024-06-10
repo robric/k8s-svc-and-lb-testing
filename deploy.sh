@@ -1,5 +1,5 @@
 #!/bin/bash
-
+set -x
 # Create cloud-init.yaml
 
 echo -e "#cloud-config\nusers:\n  - default\n  - name: ubuntu\n    ssh-authorized-keys:\n      - $(cat ~/.ssh/id_rsa.pub)\nruncmd:\n - echo 'source <(kubectl completion bash)' >> /home/ubuntu/.bashrc" > cloud-init.yaml
