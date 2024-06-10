@@ -26,7 +26,7 @@ done
 # Install K3s on the first node
 
 echo "Installing K3s on the first node..."
-multipass exec vm1 -- bash -c 'curl -sfL https://get.k3s.io | K3S_TOKEN="12345678" K3S_KUBECONFIG_MODE="644" INSTALL_K3S_EXEC="server --cluster-init --disable servicelb" sh -'
+multipass exec vm1 -- bash -c 'curl -sfL https://get.k3s.io | K3S_TOKEN="12345678" K3S_KUBECONFIG_MODE="644" INSTALL_K3S_EXEC="server --disable servicelb" sh -'
 
 echo "completed k3s install on first node ..."
 
