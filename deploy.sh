@@ -38,7 +38,8 @@ sleep 30
 # Join other nodes to the cluster
 
 for i in $(seq 2 $NUM_NODES); do
-  echo "Joining vm$i to the cluster..."
+  echo "Joining vm$i to the cluster... "
+  sleep 5
   multipass exec vm$i -- bash -c "curl -sfL https://get.k3s.io | K3S_TOKEN=\"12345678\" K3S_KUBECONFIG_MODE=\"644\" K3S_URL=https://$FIRST_NODE_IP:6443 sh -"
 #  multipass exec vm$i -- bash -c 'curl -sfL https://get.k3s.io | K3S_TOKEN="12345678" K3S_KUBECONFIG_MODE="644" K3S_URL=https://$FIRST_NODE_IP:6443 sh -'
 done
