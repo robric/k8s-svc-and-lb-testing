@@ -37,7 +37,8 @@ sleep 60
 
 for i in $(seq 2 $NUM_NODES); do
   echo "Joining vm$i to the cluster..."
-  multipass exec vm$i -- bash -c 'curl -sfL https://get.k3s.io | K3S_TOKEN="12345678" K3S_KUBECONFIG_MODE="644" K3S_URL=https://$FIRST_NODE_IP:6443 sh -'
+  multipass exec vm$i -- bash -c "curl -sfL https://get.k3s.io | K3S_TOKEN=\"12345678\" K3S_KUBECONFIG_MODE=\"644\" K3S_URL=https://$FIRST_NODE_IP:6443 sh -"
+#  multipass exec vm$i -- bash -c 'curl -sfL https://get.k3s.io | K3S_TOKEN="12345678" K3S_KUBECONFIG_MODE="644" K3S_URL=https://$FIRST_NODE_IP:6443 sh -'
 done
 
 echo "K3s cluster deployment completed."
