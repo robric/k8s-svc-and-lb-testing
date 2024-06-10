@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+
 # Create cloud-init.yaml
 
 cat > cloud-init.yaml <<EOF
