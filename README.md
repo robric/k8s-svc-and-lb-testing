@@ -41,8 +41,9 @@ test-pod                            1/1     Running   0          4m35s   10.42.1
 ubuntu@vm1:~$
 ```
 Now let's check what happens when a pods reaches a service. Here *test-pod* reaches the *nginx-service*.
-```
- kubectl  exec -it test-pod -- curl http://nginx-service:80/
+
+```console
+ubuntu@vm1:~$ kubectl  exec -it test-pod -- curl http://nginx-service:80/
 <!DOCTYPE html>
 <html>
 <head>
