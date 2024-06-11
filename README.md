@@ -14,13 +14,28 @@ curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/dep
 ```
 ## k8s basics
 
-This will create a multi-node cluster made up of 3VM based on k3s. 
+Let's start with the creation of a test pod netshoot (https://github.com/nicolaka/netshoot). This is a great troubleshooting container for exploring networking.
+```
+kubectl run test-pod --image=nicolaka/netshoot --command -- sleep infinity
+```
+
+Next let's start a with basic service (cluster IP). This will create a multi-node cluster made up of 3VM based on k3s. 
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-svc.yaml
 ```
 This how the iptables is dispatched.
 
+```
+```
+
+podA-----> SVC_IP =10.43.180.238 
+```
+ubuntu@vm1:~$ kubectl  get svc  -o wide
+NAME            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+kubernetes      ClusterIP   10.43.0.1       <none>        443/TCP   22h   <none>
+nginx-service   ClusterIP   10.43.180.238   <none>        80/TCP    22h   app=nginx
+ubuntu@vm1:~$
 ```
 ubuntu@vm1:~/ipsec-sctp-tests/helm-charts/server$ sudo iptables -t nat -v -L KUBE-SVC-NPX46M4PTMTKRN6Y
 Chain KUBE-SVC-NPX46M4PTMTKRN6Y (1 references)
