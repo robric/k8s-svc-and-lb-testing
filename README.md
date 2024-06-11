@@ -1,4 +1,4 @@
-# multipass-3-node-k8s
+# Playing around with 3-node kubernetes cluster
 
 This page is:
 - a quick copy-paste source for rapidly bringing up test scenarios.
