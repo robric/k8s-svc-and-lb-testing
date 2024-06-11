@@ -306,6 +306,28 @@ TCP SYN:
 TCP SYN-ACK:
     10.42.0.8.80 > 10.42.1.4.49186: Flags [S.]
 ```
+*TIP: find out which veth is attached to a pod, since there is no such info kubectl describe.*
+```
+#
+#  if not done: install brctl and net-tools
+#
+
+#
+# Find your DMAC based on pod IP address that you get from "kubectl get pods -o wide" option.
+# Herere 10.42.0.8 for pod nginx-1 = nginx-deployment-7c79c4bf97-gk7cj in vm1
+#
+ubuntu@vm1:~$ arp -na 
+? (10.42.0.8) at 16:9b:6c:12:bd:34 [ether] on cni0
+ubuntu@vm1:~$ brctl showmacs  cni0 | grep 16
+  2     16:9b:6c:12:bd:34       no                 2.45
+#
+# First colum is the port number
+#
+ubuntu@vm1:~$ brctl show cni0
+bridge name     bridge id               STP enabled     interfaces
+cni0            8000.3e07f3337fda       no              veth06f7413c
+                                                        veth39f5a18d <=========== This one is index=2 
+```
 
 podA-----> SVC_IP =10.43.180.238 
 ```
