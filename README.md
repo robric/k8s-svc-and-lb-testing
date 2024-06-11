@@ -13,7 +13,7 @@ I just start with an ubuntu server with:
 
 ## VM and Cluster deployment 
 
-Just run the following command:
+Just run the following command.
 ```
 curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/deploy.sh | bash
 ```
@@ -258,7 +258,53 @@ Service name resolution works as any kubernetes: the key/values are stored in th
 
 ### Service Routing Details
 
+This section describes the logic for routing kubernetes services which is extensively based on NAT.
+In summary:
+- after name resolution, the trafic is sent by test-pod to the nginx-service IP address 10.43.180.238
+- upon reception on veth interface at host side, DNAT is enforced to translate the service address to any of the pod IP.
+
+This is demonstrated in the below diagram and capture (several attemps for TCPdump were necessary since there is load balancing :-)).
+  
 ```
+                                                                 deployment 3 pods
+.----------.                                                       .---------.   
+| test-pod |--(veth)--[host-vm1]--(routing)----[host-vm1]--(veth)--| nginx-1 | 10.42.0.8
+'----------'               ^                 |                     '---------'            
+         10.42.1.4         |                 |                     .---------.  
+                        [ NAT ]              |-[host-vm3]--(veth)--| nginx-2 | 10.42.2.2  
+                           |                 |                     '---------'
+                           |                 |                     .---------.  
+                           |                 |-[host-vm2]--(veth)--| nginx-3 | 10.42.1.2  
+                                                                   '---------'
+         iptables: NAT dest = nginx-service(10.43.180.238)
+
+S=10.42.1.4, D=10.43.180.238 ----[NAT]---- S=10.42.1.4, D=10.42.0.8 
+(this an example since DEST can be any of the nginx pods since they're loaded balanced)
+
+
+#
+# From test-pod:
+#
+
+test-pod:~# tcpdump -vni eth0 "tcp and port 80"
+
+TCP SYN:
+    10.42.1.4.49186 > 10.43.180.238.80: Flags [S]
+
+TCP SYN-ACK:
+    10.43.180.238.80 > 10.42.1.4.49186: Flags [S.]
+
+#
+#From host vm1 (veth interface on dest pod - nginx-1 -): 
+#
+
+ubuntu@vm1:~$ sudo tcpdump -vni veth39f5a18d
+
+TCP SYN:
+    10.42.1.4.49186 > 10.42.0.8.80: Flags [S]
+
+TCP SYN-ACK:
+    10.42.0.8.80 > 10.42.1.4.49186: Flags [S.]
 ```
 
 podA-----> SVC_IP =10.43.180.238 
@@ -286,4 +332,6 @@ default via 10.65.94.1 dev ens3 proto dhcp src 10.65.94.238 metric 100
 10.42.0.0/24 dev cni0 proto kernel scope link src 10.42.0.1 
 10.42.1.0/24 via 10.42.1.0 dev flannel.1 onlink 
 10.42.2.0/24 via 10.42.2.0 dev flannel.1 onlink
+
+
 ```
