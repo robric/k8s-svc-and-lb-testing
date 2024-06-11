@@ -145,8 +145,8 @@ test-pod:~# tcpdump -vni  eth0
 #
 ```
 
-#### how does coredns manages service entries ? 
-coredns is started via configmap which has the kube node IPs (here vm1-3). The host resolution are not stored there since cm this would be highly unpractical: cm are ok for data that permits to start containers with appropriate parameters but not for data that requires to be updated at runtime.
+#### a glance at coredns  
+coredns is started via configmap which has the kube node IPs (here vm1-3). The service name resolution are not stored there since cm this would be highly unpractical: cm are ok for data that permits to start containers with appropriate parameters but not for data that requires to be updated at runtime. 
 
 ```console
 ubuntu@vm1:~$ kubectl get pods -n kube-system 
@@ -183,6 +183,64 @@ data:
     10.65.94.95 vm3
     10.65.94.199 vm2
     10.65.94.238 vm1
+ubuntu@vm1:~$ kubectl describe pod -n kube-system coredns-6799fbcd5-9ln42 | grep containerd
+    Container ID:  containerd://f5499f73a98b24fbc08a2da797e44f4edd932ce838d3f6b3a5d76e4ce8a0d359
+
+ubuntu@vm1:~$ sudo ctr c info f5499f73a98b24fbc08a2da797e44f4edd932ce838d3f6b3a5d76e4ce8a0d359
+[...]
+                "destination": "/etc/coredns",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/05cc11a6-6aa4-4da9-b1db-e56cf20d222f/volumes/kubernetes.io~configmap/config-volume",
+[...]
+                "destination": "/etc/hosts",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/05cc11a6-6aa4-4da9-b1db-e56cf20d222f/etc-hosts",
+[...]
+                "destination": "/etc/resolv.conf",
+                "type": "bind",
+                "source": "/var/lib/rancher/k3s/agent/containerd/io.containerd.grpc.v1.cri/sandboxes/0a3004680d3dd773b7ca99e7ec1b85c030bc96b0485f5420c20af9efdf3b3a1b/resolv.conf",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "ro"
+ubuntu@vm1:~$ sudo cat  /var/lib/kubelet/pods/05cc11a6-6aa4-4da9-b1db-e56cf20d222f/volumes/kubernetes.io~configmap/config-volume/Corefile
+.:53 {
+    errors
+    health
+    ready
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
+      pods insecure
+      fallthrough in-addr.arpa ip6.arpa
+    }
+    hosts /etc/coredns/NodeHosts {
+      ttl 60
+      reload 15s
+      fallthrough
+    }
+    prometheus :9153
+    forward . /etc/resolv.conf
+    cache 30
+    loop
+    reload
+    loadbalance
+    import /etc/coredns/custom/*.override
+}
+import /etc/coredns/custom/*.server
+ubuntu@vm1:~$ sudo cat  /var/lib/kubelet/pods/05cc11a6-6aa4-4da9-b1db-e56cf20d222f/etc-hosts
+# Kubernetes-managed hosts file.
+127.0.0.1       localhost
+::1     localhost ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+fe00::0 ip6-mcastprefix
+fe00::1 ip6-allnodes
+fe00::2 ip6-allrouters
+10.42.0.2       coredns-6799fbcd5-9ln42
+ubuntu@vm1:~$ sudo cat  /etc/resolv.conf
+[...]
+nameserver 127.0.0.53
+options edns0 trust-ad
+search multipass
+ubuntu@vm1:~$ 
 ```
 Instead, service name resolution works as any kubernetes: the key/values are stored in the kube DB (e.g. etcd) and sent to coredns upon changes.
 
