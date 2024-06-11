@@ -1,9 +1,9 @@
 # multipass-3-node-k8s
 
 This page is:
-- a personal cheat sheet for k8s so I can quickly refresh my memories
+- a quick copy-paste source for rapidly bringing up test scenarios.
 - an educational source so I can quickly share how things work under the the hood when interfacing with diverse people... Indeed, few people actually understand the kubernetes networking logic.
-- a quick copy-paste source for rapidly bringing up test scenarios
+- a personal cheat sheet for k8s for fast refresh.
 
 ## Prerequisite:
 - multipass installed (by default on ubuntu)
