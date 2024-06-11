@@ -69,6 +69,24 @@ Commercial support is available at
 </html>
 ubuntu@vm1:~$ 
 ```
+First the pod needs to resolve the URL http://nginx-service:80/ via DNS. So let's check DNS configuration for test-pod.  
+```console
+ubuntu@vm1:~$ kubectl  exec -it test-pod -- cat /etc/resolv.conf
+search default.svc.cluster.local svc.cluster.local cluster.local multipass
+nameserver 10.43.0.10
+options ndots:5
+ubuntu@vm1:~$
+```
+Which is the IP of the -how suprising !- kube-dns service. 
+```
+ubuntu@vm1:~$ kubectl get svc -A
+NAMESPACE      NAME             TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                        AGE
+[...]
+kube-system    kube-dns         ClusterIP      10.43.0.10      <none>        53/UDP,53/TCP,9153/TCP         22h
+```
+Hence, before reaching any service, there is a request to the DNS service itself... the svc plumbing is cluster IP just like the nginx-service itself but for DNS trafic (UDP 53). 
+```
+```
 This how the iptables is dispatched.
 
 ```
