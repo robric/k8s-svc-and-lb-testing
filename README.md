@@ -116,9 +116,48 @@ NAMESPACE      NAME             TYPE           CLUSTER-IP      EXTERNAL-IP   POR
 [...]
 kube-system    kube-dns         ClusterIP      10.43.0.10      <none>        53/UDP,53/TCP,9153/TCP         22h
 ```
-Hence, before reaching any service, there is a request to the DNS service itself... the svc plumbing is cluster IP just like the nginx-service itself but for DNS trafic (UDP 53). 
+Hence, before reaching any service, there is a request to the DNS service itself... the svc plumbing is cluster IP just like the nginx-service itself but for DNS trafic (UDP 53). We'll see the deatils of how this works through iptables/NAT later. Ultimately the DNS requests reaches the coredns pod. So let's have a look at it to see how the service name resolution is enforced.
+
+coredns is started via configmap which has the kube node IPs (here vm1-3). The host resolution are not stored there since cm this would be highly unpractical: cm are ok for data that permits to start containers with appropriate parameters but not for data that requires to be updated at runtime.
+
+```console
+ubuntu@vm1:~$ kubectl get pods -n kube-system 
+NAME                                      READY   STATUS      RESTARTS   AGE
+[...]
+coredns-6799fbcd5-9ln42                   1/1     Running     0          23h
+ubuntu@vm1:~$ kubectl get cm -n kube-system coredns  -o yaml
+apiVersion: v1
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+          pods insecure
+          fallthrough in-addr.arpa ip6.arpa
+        }
+        hosts /etc/coredns/NodeHosts {
+          ttl 60
+          reload 15s
+          fallthrough
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf
+        cache 30
+        loop
+        reload
+        loadbalance
+        import /etc/coredns/custom/*.override
+    }
+    import /etc/coredns/custom/*.server
+  NodeHosts: |
+    10.65.94.95 vm3
+    10.65.94.199 vm2
+    10.65.94.238 vm1
 ```
-```
+Instead, service name resolution works as any kubernetes: the key/values are stored in the kube DB (e.g. etcd) and sent to coredns upon changes.
+
 This how the iptables is dispatched.
 
 ```
