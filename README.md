@@ -329,6 +329,25 @@ cni0            8000.3e07f3337fda       no              veth06f7413c
                                                         veth39f5a18d <=========== This one is index=2 
 ```
 
+OK so now let's explore how the NAT plumbing is enforced.
+```
+#
+# First, find out the name of the rules that are involved in translation to service IP = 10.43.180.238 
+# Then explore the set of rules that enforce NAT.
+#  
+
+ubuntu@vm1:~$ sudo iptables -t nat  -L -n -v  --line-numbers  | grep 10.43.180.238
+5        0     0 KUBE-SVC-V2OKYYMBY3REGZOG  tcp  --  *      *       0.0.0.0/0            10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:80
+1        0     0 KUBE-MARK-MASQ  tcp  --  *      *      !10.42.0.0/16         10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:80
+ubuntu@vm1:~$ sudo iptables -t nat -L KUBE-SVC-V2OKYYMBY3REGZOG -v 
+Chain KUBE-SVC-V2OKYYMBY3REGZOG (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 KUBE-MARK-MASQ  tcp  --  any    any    !fiveg-host-24-node4/16  10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:http
+    0     0 KUBE-SEP-LNMZPQ2U2A5TEEGP  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.0.8:80 */ statistic mode random probability 0.33333333349
+    0     0 KUBE-SEP-3Y75O4B4KDVD7TMA  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.1.2:80 */ statistic mode random probability 0.50000000000
+    0     0 KUBE-SEP-Z33JJVRDNG7R4HVW  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.2.2:80 */
+ubuntu@vm1:~$ 
+```
 podA-----> SVC_IP =10.43.180.238 
 ```
 ubuntu@vm1:~$ kubectl  get svc  -o wide
