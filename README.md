@@ -17,7 +17,7 @@ Just run the following command:
 ```
 curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/deploy.sh | bash
 ```
-We'll get 3 VMs with kubernetes running.
+We'll get 3 VMs with kubernetes running (k3s inside)
 ```console
 root@fiveg-host-24-node4:~# multipass list 
 Name                    State             IPv4             Image
