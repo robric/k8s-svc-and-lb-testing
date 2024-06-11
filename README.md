@@ -34,34 +34,7 @@ vm3                     Running           10.65.94.95      Ubuntu 22.04 LTS
                                           10.42.2.0
                                           10.42.2.1
 root@fiveg-host-24-node4:~# multipass shell vm1
-Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.15.0-107-generic x86_64)
-
- * Documentation:  https://help.ubuntu.com
- * Management:     https://landscape.canonical.com
- * Support:        https://ubuntu.com/pro
-
- System information as of Tue Jun 11 02:35:37 PDT 2024
-
-  System load:  0.05               Processes:             137
-  Usage of /:   11.5% of 28.89GB   Users logged in:       0
-  Memory usage: 11%                IPv4 address for ens3: 10.65.94.238
-  Swap usage:   0%
-
- * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
-   just raised the bar for easy, resilient and secure K8s cluster deployment.
-
-   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
-
-Expanded Security Maintenance for Applications is not enabled.
-
-12 updates can be applied immediately.
-To see these additional updates run: apt list --upgradable
-
-Enable ESM Apps to receive additional future security updates.
-See https://ubuntu.com/esm or run: sudo pro status
-
-
-*** System restart required ***
+[...]
 Last login: Tue Jun 11 01:57:04 2024 from 10.65.94.1
 ubuntu@vm1:~$ kubectl get nodes
 NAME   STATUS   ROLES                  AGE   VERSION
