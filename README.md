@@ -46,6 +46,10 @@ ubuntu@vm1:~$
 
 ## k8s basics
 
+### Service deployment and routing
+
+#### bootstraping
+
 Let's start with the creation of a test pod netshoot (https://github.com/nicolaka/netshoot). This is a great troubleshooting container for exploring networking.
 ```
 kubectl run test-pod --image=nicolaka/netshoot --command -- sleep infinity
@@ -72,6 +76,7 @@ nginx-deployment-7c79c4bf97-5j5bv   1/1     Running   0          22h     10.42.1
 test-pod                            1/1     Running   0          4m35s   10.42.1.4   vm2    <none>           <none>
 ubuntu@vm1:~$
 ```
+#### how does a pod reaches a services ?
 Now let's check what happens when a pods reaches a service. Here *test-pod* reaches the *nginx-service*.
 
 ```console
@@ -118,6 +123,7 @@ kube-system    kube-dns         ClusterIP      10.43.0.10      <none>        53/
 ```
 Hence, before reaching any service, there is a request to the DNS service itself... the svc plumbing is cluster IP just like the nginx-service itself but for DNS trafic (UDP 53). We'll see the deatils of how this works through iptables/NAT later. Ultimately the DNS requests reaches the coredns pod. So let's have a look at it to see how the service name resolution is enforced.
 
+#### how does coredns manages service entries ? 
 coredns is started via configmap which has the kube node IPs (here vm1-3). The host resolution are not stored there since cm this would be highly unpractical: cm are ok for data that permits to start containers with appropriate parameters but not for data that requires to be updated at runtime.
 
 ```console
