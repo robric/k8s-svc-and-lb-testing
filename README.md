@@ -122,9 +122,21 @@ NAMESPACE      NAME             TYPE           CLUSTER-IP      EXTERNAL-IP   POR
 kube-system    kube-dns         ClusterIP      10.43.0.10      <none>        53/UDP,53/TCP,9153/TCP         22h
 ```
 Hence, before reaching any service, there is a request to the DNS service itself... the svc plumbing is cluster IP just like the nginx-service itself but for DNS trafic (UDP 53). We'll see the deatils of how this works through iptables/NAT later. Ultimately the DNS requests reaches the coredns pod. So let's have a look at it to see how the service name resolution is enforced.
-
-Here the capture from the pod.
 ```
+.----------.                                                   .---------.   
+| test-pod |--(veth)---[kube-dns=10.43.0.10]----------(veth)---| coredns |
+'----------'                                                   '---------'  
+     |               
+     |
++----------------------------------------------------------------                                                                  
+|curl http://nginx-service:80/                                  |
+|DNS REQUEST to 10.43.0.10: what is the IP for nginx-service ?  | 
+|DNS RESPONSE from 10.43.0.10: This is IP address 10.43.180.238 |  
+|                                                               |  
++----------------------------------------------------------------
+
+TCPDUMP Traces from pod:
+
 ubuntu@vm1:~$ kubectl  exec -it test-pod -- bash
 test-pod:~# tcpdump -vni  eth0
 #
@@ -242,9 +254,9 @@ options edns0 trust-ad
 search multipass
 ubuntu@vm1:~$ 
 ```
-Instead, service name resolution works as any kubernetes: the key/values are stored in the kube DB (e.g. etcd) and sent to coredns upon changes.
+Service name resolution works as any kubernetes: the key/values are stored in the kube DB (e.g. etcd) and sent to coredns upon changes.
 
-This how the iptables is dispatched.
+### Service Routing Details
 
 ```
 ```
