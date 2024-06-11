@@ -24,6 +24,50 @@ Next let's start a with basic service (cluster IP). This will create a multi-nod
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-svc.yaml
 ```
+
+This is what we get:
+
+```console
+ubuntu@vm1:~$ kubectl get svc -o wide
+NAME            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+kubernetes      ClusterIP   10.43.0.1       <none>        443/TCP   22h   <none>
+nginx-service   ClusterIP   10.43.180.238   <none>        80/TCP    22h   app=nginx
+ubuntu@vm1:~$ kubectl get pods -o wide
+NAME                                READY   STATUS    RESTARTS   AGE     IP          NODE   NOMINATED NODE   READINESS GATES
+nginx-deployment-7c79c4bf97-gk7cj   1/1     Running   0          22h     10.42.0.8   vm1    <none>           <none>
+nginx-deployment-7c79c4bf97-4fdl4   1/1     Running   0          22h     10.42.2.2   vm3    <none>           <none>
+nginx-deployment-7c79c4bf97-5j5bv   1/1     Running   0          22h     10.42.1.2   vm2    <none>           <none>
+test-pod                            1/1     Running   0          4m35s   10.42.1.4   vm2    <none>           <none>
+ubuntu@vm1:~$
+```
+Now let's check what happens when a pods reaches a service. Here *test-pod* reaches the *nginx-service*.
+```
+ kubectl  exec -it test-pod -- curl http://nginx-service:80/
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+ubuntu@vm1:~$ 
+```
 This how the iptables is dispatched.
 
 ```
