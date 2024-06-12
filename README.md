@@ -328,7 +328,6 @@ bridge name     bridge id               STP enabled     interfaces
 cni0            8000.3e07f3337fda       no              veth06f7413c
                                                         veth39f5a18d <=========== This one is index=2 
 ```
-
 OK so now let's explore how the NAT plumbing is enforced.
 ```
 #
@@ -371,4 +370,8 @@ ubuntu@vm1:~$
 #                                                                                   ----> KUBE-SEP-LNMZPQ2U2A5TEEGP (DNAT to 10.42.0.8:80)
 # 
 ```
+
+
+
+
 
