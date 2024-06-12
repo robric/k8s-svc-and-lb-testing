@@ -347,6 +347,11 @@ Chain KUBE-SVC-V2OKYYMBY3REGZOG (1 references)
     0     0 KUBE-SEP-3Y75O4B4KDVD7TMA  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.1.2:80 */ statistic mode random probability 0.50000000000
     0     0 KUBE-SEP-Z33JJVRDNG7R4HVW  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.2.2:80 */
 ubuntu@vm1:~$ 
+
+#
+# As expected the trafic is load balanced thanks to a *SEP* rules in iptables which defines a separate entry for each target pod.
+# Note that there is no SNAT and no need to do so since connection and brought up to services.
+# 
 ```
 podA-----> SVC_IP =10.43.180.238 
 ```
