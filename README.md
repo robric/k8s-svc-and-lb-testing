@@ -363,8 +363,12 @@ ubuntu@vm1:~$ sudo iptables-save | grep   KUBE-SEP-Z33JJVRDNG7R4HVW
 ubuntu@vm1:~$  
 
 #
-# As expected the trafic is load balanced thanks to a *SEP* rules in iptables which defines a separate entry for each target pod.
+# As expected the trafic is load balanced thanks to a set of rules in iptables which defines a separate entry for each target pod.
 # Note that there is no SNAT and no need to do so since connection and brought up to services.
+#
+# KUBE-SERVICES -d 10.43.180.238/32 -m tcp --dport 80---> KUBE-SVC-V2OKYYMBY3REGZOG ----> KUBE-SEP-3Y75O4B4KDVD7TMA (DNAT  to 10.42.1.2:80)
+#                                                                                   ----> KUBE-SEP-Z33JJVRDNG7R4HVW (DNAT to 10.42.2.2:80)
+#                                                                                   ----> KUBE-SEP-LNMZPQ2U2A5TEEGP (DNAT to 10.42.0.8:80)
 # 
 ```
 
