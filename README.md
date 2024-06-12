@@ -526,8 +526,18 @@ Deploy the metalb service in L2 mode. It will reach the same pods as the basic n
 ```
 curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/metalb-l2 | sh
 ```
+We're having now a new service of Type LoadBalancer which has an external IP.
 
-
+```console
+ubuntu@vm1:~$ kubectl get svc
+NAME               TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)        AGE
+kubernetes         ClusterIP      10.43.0.1       <none>           443/TCP        2d1h
+nginx-service      ClusterIP      10.43.180.238   <none>           80/TCP         2d1h
+nginx-np-service   NodePort       10.43.143.108   <none>           80:30000/TCP   3h34m
+nginx-mlb-l2       LoadBalancer   10.43.137.239   10.123.123.100   80:30231/TCP   19m
+ubuntu@vm1:~$
+``` 
+Again there is always a default Cluster IP that is attached (business as usual), which is reachable via port 80.
 
 
 
