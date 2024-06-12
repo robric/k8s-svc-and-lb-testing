@@ -373,13 +373,79 @@ ubuntu@vm1:~$
 
 ### Nodeport 
 
-Deploy nodeport service:
+Deploy nodeport service with:
+- nodeport port: 30000
+- svc port: 80
+- container port: 8080
+Note that nodeport has cluster IP since this is the same logic for intra-cluster communication (i.e. reaching the service from test-pod in previous section).
+
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-np-svc.yaml
 ````
+After deployment we have the following:
+```console
+ubuntu@vm1:~$ kubectl get svc -o wide
+NAME               TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE   SELECTOR
+kubernetes         ClusterIP   10.43.0.1       <none>        443/TCP        46h   <none>
+nginx-service      ClusterIP   10.43.180.238   <none>        80/TCP         46h   app=nginx
+nginx-np-service   NodePort    10.43.143.108   <none>        80:30000/TCP   20s   app=nginx-np
+ubuntu@vm1:~$ 
+```
+We see that an additional port is now exposed (30000) for access via nodeport for external connectivity (although this is not recommended).
+Now let's have a look at the iptables logic.
+```
+#
+# standard definition of k8s service with Cluster IP  
+#
+ubuntu@vm1:~$ sudo iptables-save | grep  10.43.143.108 
+-A KUBE-SERVICES -d 10.43.143.108/32 -p tcp -m comment --comment "default/nginx-np-service cluster IP" -m tcp --dport 80 -j KUBE-SVC-MUSBZEOMK5UKWKKU
+-A KUBE-SVC-MUSBZEOMK5UKWKKU ! -s 10.42.0.0/16 -d 10.43.143.108/32 -p tcp -m comment --comment "default/nginx-np-service cluster IP" -m tcp --dport 80 -j KUBE-MARK-MASQ
+ubuntu@vm1:~$ sudo iptables -S KUBE-SVC-MUSBZEOMK5UKWKKU -v
+iptables v1.8.7 (nf_tables): chain `KUBE-SVC-MUSBZEOMK5UKWKKU' in table `filter' is incompatible, use 'nft' tool.
 
+ubuntu@vm1:~$ sudo iptables -t nat -S KUBE-SVC-MUSBZEOMK5UKWKKU -v
+-N KUBE-SVC-MUSBZEOMK5UKWKKU
+-A KUBE-SVC-MUSBZEOMK5UKWKKU ! -s 10.42.0.0/16 -d 10.43.143.108/32 -p tcp -m comment --comment "default/nginx-np-service cluster IP" -m tcp --dport 80 -c 0 0 -j KUBE-MARK-MASQ
+-A KUBE-SVC-MUSBZEOMK5UKWKKU -m comment --comment "default/nginx-np-service -> 10.42.0.10:8080" -m statistic --mode random --probability 0.33333333349 -c 0 0 -j KUBE-SEP-MQVY6GCMKDVFWQIB
+-A KUBE-SVC-MUSBZEOMK5UKWKKU -m comment --comment "default/nginx-np-service -> 10.42.1.6:8080" -m statistic --mode random --probability 0.50000000000 -c 0 0 -j KUBE-SEP-6BQ3QHB6G4YIKPPI
+-A KUBE-SVC-MUSBZEOMK5UKWKKU -m comment --comment "default/nginx-np-service -> 10.42.2.5:8080" -c 0 0 -j KUBE-SEP-746QLTYFWXTG2Q66
+ubuntu@vm1:~$ 
+#
+# Nodeport 
+#
+ubuntu@vm1:~$ sudo iptables-save | grep  30000 
+-A KUBE-ROUTER-INPUT -p tcp -m comment --comment "allow LOCAL TCP traffic to node ports - LR7XO7NXDBGQJD2M" -m addrtype --dst-type LOCAL -m multiport --dports 30000:32767 -j RETURN
+-A KUBE-ROUTER-INPUT -p udp -m comment --comment "allow LOCAL UDP traffic to node ports - 76UCBPIZNGJNWNUZ" -m addrtype --dst-type LOCAL -m multiport --dports 30000:32767 -j RETURN
+-A KUBE-NODEPORTS -p tcp -m comment --comment "default/nginx-np-service" -m tcp --dport 30000 -j KUBE-EXT-MUSBZEOMK5UKWKKU
+ubuntu@vm1:~$ sudo iptables -t nat -L KUBE-EXT-MUSBZEOMK5UKWKKU -v
+Chain KUBE-EXT-MUSBZEOMK5UKWKKU (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 KUBE-MARK-MASQ  all  --  any    any     anywhere             anywhere             /* masquerade traffic for default/nginx-np-service external destinations */
+    0     0 KUBE-SVC-MUSBZEOMK5UKWKKU  all  --  any    any     anywhere             anywhere            
+ubuntu@vm1:~$ 
+#
+# The nodeport points to the same "KUBE-SVC-MUSBZEOMK5UKWKKU" rule where NAT is enforced.
+#
+# KUBE-SERVICES -d 10.43.180.238/32 -m tcp --dport 80---> KUBE-SVC-V2OKYYMBY3REGZOG ----> KUBE-SEP-3Y75O4B4KDVD7TMA (DNAT  to 10.42.1.2:80)
+#                                                     ^                              |---> KUBE-SEP-Z33JJVRDNG7R4HVW (DNAT to 10.42.2.2:80)
+#                                                     |                              |---> KUBE-SEP-LNMZPQ2U2A5TEEGP (DNAT to 10.42.0.8:80)
+# KUBE-NODEPORTS -m tcp --dport 30000         ---------
+#
+```
+Of course, all nodes have the same logic. Here is a capture from vm2.
+```
+ubuntu@vm2:~$ sudo iptables -t nat -L  KUBE-SVC-V2OKYYMBY3REGZOG -v
+Chain KUBE-SVC-V2OKYYMBY3REGZOG (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 KUBE-MARK-MASQ  tcp  --  any    any    !fiveg-host-24-node4/16  10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:http
+   12   720 KUBE-SEP-LNMZPQ2U2A5TEEGP  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.0.8:80 */ statistic mode random probability 0.33333333349
+   10   600 KUBE-SEP-3Y75O4B4KDVD7TMA  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.1.2:80 */ statistic mode random probability 0.50000000000
+   10   600 KUBE-SEP-Z33JJVRDNG7R4HVW  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.2.2:80 */
 
-
+ubuntu@vm2:~$ sudo iptables -t nat -L  | grep 30000
+KUBE-EXT-MUSBZEOMK5UKWKKU  tcp  --  anywhere             anywhere             /* default/nginx-np-service */ tcp dpt:30000
+ubuntu@vm2:~$ 
+```
 
 
 
