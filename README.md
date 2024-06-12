@@ -333,51 +333,38 @@ OK so now let's explore how the NAT plumbing is enforced.
 ```
 #
 # First, find out the name of the rules that are involved in translation to service IP = 10.43.180.238 
-# Then explore the set of rules that enforce NAT.
-#  
-
-ubuntu@vm1:~$ sudo iptables -t nat  -L -n -v  --line-numbers  | grep 10.43.180.238
-5        0     0 KUBE-SVC-V2OKYYMBY3REGZOG  tcp  --  *      *       0.0.0.0/0            10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:80
-1        0     0 KUBE-MARK-MASQ  tcp  --  *      *      !10.42.0.0/16         10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:80
-ubuntu@vm1:~$ sudo iptables -t nat -L KUBE-SVC-V2OKYYMBY3REGZOG -v 
-Chain KUBE-SVC-V2OKYYMBY3REGZOG (1 references)
- pkts bytes target     prot opt in     out     source               destination         
-    0     0 KUBE-MARK-MASQ  tcp  --  any    any    !fiveg-host-24-node4/16  10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:http
-    0     0 KUBE-SEP-LNMZPQ2U2A5TEEGP  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.0.8:80 */ statistic mode random probability 0.33333333349
-    0     0 KUBE-SEP-3Y75O4B4KDVD7TMA  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.1.2:80 */ statistic mode random probability 0.50000000000
-    0     0 KUBE-SEP-Z33JJVRDNG7R4HVW  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.2.2:80 */
-ubuntu@vm1:~$ 
+# Then explore the set of rules that enforce NAT. This is ugly, but that's what iptables is.
+# 
+ubuntu@vm1:~$ sudo iptables-save | grep  10.43.180.238    
+-A KUBE-SERVICES -d 10.43.180.238/32 -p tcp -m comment --comment "default/nginx-service cluster IP" -m tcp --dport 80 -j KUBE-SVC-V2OKYYMBY3REGZOG
+-A KUBE-SVC-V2OKYYMBY3REGZOG ! -s 10.42.0.0/16 -d 10.43.180.238/32 -p tcp -m comment --comment "default/nginx-service cluster IP" -m tcp --dport 80 -j KUBE-MARK-MASQ
+ubuntu@vm1:~$ sudo iptables-save | grep  KUBE-SVC-V2OKYYMBY3REGZOG
+:KUBE-SVC-V2OKYYMBY3REGZOG - [0:0]
+-A KUBE-SERVICES -d 10.43.180.238/32 -p tcp -m comment --comment "default/nginx-service cluster IP" -m tcp --dport 80 -j KUBE-SVC-V2OKYYMBY3REGZOG
+-A KUBE-SVC-V2OKYYMBY3REGZOG ! -s 10.42.0.0/16 -d 10.43.180.238/32 -p tcp -m comment --comment "default/nginx-service cluster IP" -m tcp --dport 80 -j KUBE-MARK-MASQ
+-A KUBE-SVC-V2OKYYMBY3REGZOG -m comment --comment "default/nginx-service -> 10.42.0.8:80" -m statistic --mode random --probability 0.33333333349 -j KUBE-SEP-LNMZPQ2U2A5TEEGP
+-A KUBE-SVC-V2OKYYMBY3REGZOG -m comment --comment "default/nginx-service -> 10.42.1.2:80" -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-3Y75O4B4KDVD7TMA
+-A KUBE-SVC-V2OKYYMBY3REGZOG -m comment --comment "default/nginx-service -> 10.42.2.2:80" -j KUBE-SEP-Z33JJVRDNG7R4HVW
+ubuntu@vm1:~$ sudo iptables-save | grep  KUBE-SEP-LNMZPQ2U2A5TEEGP
+:KUBE-SEP-LNMZPQ2U2A5TEEGP - [0:0]
+-A KUBE-SEP-LNMZPQ2U2A5TEEGP -s 10.42.0.8/32 -m comment --comment "default/nginx-service" -j KUBE-MARK-MASQ
+-A KUBE-SEP-LNMZPQ2U2A5TEEGP -p tcp -m comment --comment "default/nginx-service" -m tcp -j DNAT --to-destination 10.42.0.8:80
+-A KUBE-SVC-V2OKYYMBY3REGZOG -m comment --comment "default/nginx-service -> 10.42.0.8:80" -m statistic --mode random --probability 0.33333333349 -j KUBE-SEP-LNMZPQ2U2A5TEEGP
+ubuntu@vm1:~$ sudo iptables-save | grep  KUBE-SEP-3Y75O4B4KDVD7TMA
+:KUBE-SEP-3Y75O4B4KDVD7TMA - [0:0]
+-A KUBE-SEP-3Y75O4B4KDVD7TMA -s 10.42.1.2/32 -m comment --comment "default/nginx-service" -j KUBE-MARK-MASQ
+-A KUBE-SEP-3Y75O4B4KDVD7TMA -p tcp -m comment --comment "default/nginx-service" -m tcp -j DNAT --to-destination 10.42.1.2:80
+-A KUBE-SVC-V2OKYYMBY3REGZOG -m comment --comment "default/nginx-service -> 10.42.1.2:80" -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-3Y75O4B4KDVD7TMA
+ubuntu@vm1:~$ sudo iptables-save | grep   KUBE-SEP-Z33JJVRDNG7R4HVW
+:KUBE-SEP-Z33JJVRDNG7R4HVW - [0:0]
+-A KUBE-SEP-Z33JJVRDNG7R4HVW -s 10.42.2.2/32 -m comment --comment "default/nginx-service" -j KUBE-MARK-MASQ
+-A KUBE-SEP-Z33JJVRDNG7R4HVW -p tcp -m comment --comment "default/nginx-service" -m tcp -j DNAT --to-destination 10.42.2.2:80
+-A KUBE-SVC-V2OKYYMBY3REGZOG -m comment --comment "default/nginx-service -> 10.42.2.2:80" -j KUBE-SEP-Z33JJVRDNG7R4HVW
+ubuntu@vm1:~$  
 
 #
 # As expected the trafic is load balanced thanks to a *SEP* rules in iptables which defines a separate entry for each target pod.
 # Note that there is no SNAT and no need to do so since connection and brought up to services.
 # 
 ```
-podA-----> SVC_IP =10.43.180.238 
-```
-ubuntu@vm1:~$ kubectl  get svc  -o wide
-NAME            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
-kubernetes      ClusterIP   10.43.0.1       <none>        443/TCP   22h   <none>
-nginx-service   ClusterIP   10.43.180.238   <none>        80/TCP    22h   app=nginx
-ubuntu@vm1:~$
-```
-ubuntu@vm1:~/ipsec-sctp-tests/helm-charts/server$ sudo iptables -t nat -v -L KUBE-SVC-NPX46M4PTMTKRN6Y
-Chain KUBE-SVC-NPX46M4PTMTKRN6Y (1 references)
- pkts bytes target     prot opt in     out     source               destination         
-    0     0 KUBE-MARK-MASQ  tcp  --  any    any    !fiveg-host-24-node4/16  10.43.0.1            /* default/kubernetes:https cluster IP */ tcp dpt:https
-   30  1800 KUBE-SEP-5MZSX7EQJ56C6NAG  all  --  any    any     anywhere             anywhere             /* default/kubernetes:https -> 10.65.94.238:6443 */
-ubuntu@vm1:~/ipsec-sctp-tests/helm-charts/server$ sudo iptables -t nat -v -L KUBE-SVC-V2OKYYMBY3REGZOG
-Chain KUBE-SVC-V2OKYYMBY3REGZOG (1 references)
- pkts bytes target     prot opt in     out     source               destination         
-    0     0 KUBE-MARK-MASQ  tcp  --  any    any    !fiveg-host-24-node4/16  10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:http
-    0     0 KUBE-SEP-LNMZPQ2U2A5TEEGP  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.0.8:80 */ statistic mode random probability 0.33333333349
-    0     0 KUBE-SEP-3Y75O4B4KDVD7TMA  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.1.2:80 */ statistic mode random probability 0.50000000000
-    0     0 KUBE-SEP-Z33JJVRDNG7R4HVW  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.2.2:80 */
-ubuntu@vm1:~/ipsec-sctp-tests/helm-charts/server$ ip route show
-default via 10.65.94.1 dev ens3 proto dhcp src 10.65.94.238 metric 100 
-10.42.0.0/24 dev cni0 proto kernel scope link src 10.42.0.1 
-10.42.1.0/24 via 10.42.1.0 dev flannel.1 onlink 
-10.42.2.0/24 via 10.42.2.0 dev flannel.1 onlink
 
-
-```
