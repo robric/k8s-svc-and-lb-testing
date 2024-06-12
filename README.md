@@ -426,24 +426,26 @@ ubuntu@vm1:~$
 #
 # The nodeport points to the same "KUBE-SVC-MUSBZEOMK5UKWKKU" rule where NAT is enforced.
 #
-# KUBE-SERVICES -d 10.43.180.238/32 -m tcp --dport 80---> KUBE-SVC-V2OKYYMBY3REGZOG ----> KUBE-SEP-3Y75O4B4KDVD7TMA (DNAT  to 10.42.1.2:80)
-#                                                     ^                              |---> KUBE-SEP-Z33JJVRDNG7R4HVW (DNAT to 10.42.2.2:80)
-#                                                     |                              |---> KUBE-SEP-LNMZPQ2U2A5TEEGP (DNAT to 10.42.0.8:80)
+# KUBE-SERVICES -d 10.43.180.238/32 -m tcp --dport 80---> KUBE-SVC-MUSBZEOMK5UKWKKU -----> KUBE-SEP-MQVY6GCMKDVFWQIB (DNAT  to 10.42.0.10:8080)
+#                                                     ^                              |---> KUBE-SEP-6BQ3QHB6G4YIKPPI (DNAT to 10.42.1.6:8080)
+#                                                     |                              |---> KUBE-SEP-746QLTYFWXTG2Q66 (DNAT to 10.42.2.5:8080)
 # KUBE-NODEPORTS -m tcp --dport 30000         ---------
 #
 ```
 Of course, all nodes have the same logic. Here is a capture from vm2.
 ```
-ubuntu@vm2:~$ sudo iptables -t nat -L  KUBE-SVC-V2OKYYMBY3REGZOG -v
-Chain KUBE-SVC-V2OKYYMBY3REGZOG (1 references)
+ubuntu@vm2:~$ sudo iptables -t nat -L  KUBE-EXT-MUSBZEOMK5UKWKKU -v
+Chain KUBE-EXT-MUSBZEOMK5UKWKKU (1 references)
  pkts bytes target     prot opt in     out     source               destination         
-    0     0 KUBE-MARK-MASQ  tcp  --  any    any    !fiveg-host-24-node4/16  10.43.180.238        /* default/nginx-service cluster IP */ tcp dpt:http
-   12   720 KUBE-SEP-LNMZPQ2U2A5TEEGP  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.0.8:80 */ statistic mode random probability 0.33333333349
-   10   600 KUBE-SEP-3Y75O4B4KDVD7TMA  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.1.2:80 */ statistic mode random probability 0.50000000000
-   10   600 KUBE-SEP-Z33JJVRDNG7R4HVW  all  --  any    any     anywhere             anywhere             /* default/nginx-service -> 10.42.2.2:80 */
-
-ubuntu@vm2:~$ sudo iptables -t nat -L  | grep 30000
-KUBE-EXT-MUSBZEOMK5UKWKKU  tcp  --  anywhere             anywhere             /* default/nginx-np-service */ tcp dpt:30000
+    0     0 KUBE-MARK-MASQ  all  --  any    any     anywhere             anywhere             /* masquerade traffic for default/nginx-np-service external destinations */
+    0     0 KUBE-SVC-MUSBZEOMK5UKWKKU  all  --  any    any     anywhere             anywhere            
+ubuntu@vm2:~$ sudo iptables -t nat -L  KUBE-SVC-MUSBZEOMK5UKWKKU
+Chain KUBE-SVC-MUSBZEOMK5UKWKKU (2 references)
+target     prot opt source               destination         
+KUBE-MARK-MASQ  tcp  -- !fiveg-host-24-node4/16  10.43.143.108        /* default/nginx-np-service cluster IP */ tcp dpt:http
+KUBE-SEP-MQVY6GCMKDVFWQIB  all  --  anywhere             anywhere             /* default/nginx-np-service -> 10.42.0.10:8080 */ statistic mode random probability 0.33333333349
+KUBE-SEP-6BQ3QHB6G4YIKPPI  all  --  anywhere             anywhere             /* default/nginx-np-service -> 10.42.1.6:8080 */ statistic mode random probability 0.50000000000
+KUBE-SEP-746QLTYFWXTG2Q66  all  --  anywhere             anywhere             /* default/nginx-np-service -> 10.42.2.5:8080 */
 ubuntu@vm2:~$ 
 ```
 
