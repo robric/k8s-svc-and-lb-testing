@@ -2,9 +2,11 @@
 
 # define the vlan 100 in cni0 bridge
 
-sudo ip link add link cni0 name cni0.100 type vlan id 100
-sudo ip link set cni0.100 up
-sudo ip addr add 10.123.123.254/24 dev cni0.100
+
+sudo ip link add link mpqemubr0 name mpqemubr0.100 type vlan id 100
+sudo ip link set mpqemubr0.100 up
+sudo ip addr add 10.123.123.254/24 dev mpqemubr0.100
+
 
 # add vlan 100 on each vm inerface.
 
