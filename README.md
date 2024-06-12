@@ -429,12 +429,12 @@ The nodeport points to the same "KUBE-SVC-MUSBZEOMK5UKWKKU" rule where NAT is en
 Here is a diagram that summarizes the added logic of nodeports in iptables.
 ```
 
-KUBE-SERVICES -d 10.43.180.238/32 -m tcp --dport 80---> KUBE-SVC-MUSBZEOMK5UKWKKU -----> KUBE-SEP-MQVY6GCMKDVFWQIB (DNAT  to 10.42.0.10:8080)
-                                                    ^                              |---> KUBE-SEP-6BQ3QHB6G4YIKPPI (DNAT to 10.42.1.6:8080)
-                                                    |                              |---> KUBE-SEP-746QLTYFWXTG2Q66 (DNAT to 10.42.2.5:8080)
-                                      KUBE-EXT-MUSBZEOMK5UKWKKU
-                                                    |                              
-KUBE-NODEPORTS -m tcp --dport 30000         ---------
+KUBE-SERVICES -d 10.43.180.238/32 -m tcp --dport 80---> KUBE-SVC-MUSBZEOMK5UKWKKU +---> KUBE-SEP-MQVY6GCMKDVFWQIB (DNAT  to 10.42.0.10:8080)
+                                                        ^                         |---> KUBE-SEP-6BQ3QHB6G4YIKPPI (DNAT to 10.42.1.6:8080)
+                                                        |                         |---> KUBE-SEP-746QLTYFWXTG2Q66 (DNAT to 10.42.2.5:8080)
+                                            KUBE-EXT-MUSBZEOMK5UKWKKU
+                                                        |                              
+KUBE-NODEPORTS -m tcp --dport 30000         -------------
 
 ```
 Of course, all nodes have the same logic. Here is a capture from vm2.
