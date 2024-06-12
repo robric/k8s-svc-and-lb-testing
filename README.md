@@ -44,11 +44,9 @@ vm2    Ready    <none>                 22h   v1.29.5+k3s1
 ubuntu@vm1:~$ 
 ```
 
-## k8s basics
+##  K8s basic service deployment and routing analysis
 
-### Service deployment and routing
-
-#### bootstraping
+### Bootstraping
 
 Let's start with the creation of a test pod netshoot (https://github.com/nicolaka/netshoot). This is a great troubleshooting container for exploring networking.
 ```
@@ -76,7 +74,7 @@ nginx-deployment-7c79c4bf97-5j5bv   1/1     Running   0          22h     10.42.1
 test-pod                            1/1     Running   0          4m35s   10.42.1.4   vm2    <none>           <none>
 ubuntu@vm1:~$
 ```
-#### how does a pod reaches a services ?
+### How does a pod reaches a services ?
 Now let's check what happens when a pods reaches a service. Here *test-pod* reaches the *nginx-service*.
 
 ```console
@@ -157,7 +155,7 @@ test-pod:~# tcpdump -vni  eth0
 #
 ```
 
-#### a glance at coredns  
+### A glance at coredns  
 coredns is started via configmap which has the kube node IPs (here vm1-3). The service name resolution are not stored there since cm this would be highly unpractical: cm are ok for data that permits to start containers with appropriate parameters but not for data that requires to be updated at runtime. 
 
 ```console
@@ -453,6 +451,88 @@ KUBE-SEP-6BQ3QHB6G4YIKPPI  all  --  anywhere             anywhere             /*
 KUBE-SEP-746QLTYFWXTG2Q66  all  --  anywhere             anywhere             /* default/nginx-np-service -> 10.42.2.5:8080 */
 ubuntu@vm2:~$ 
 ```
+## Metalb Integration on 3 node cluster
+
+### Target Design
+
+We're now adding an external interface to the current networking thanks to a vlan (vlan 100).
+
+```
+            +----------------------------------------------+    
+            |                   Cluster                    |    
+            | +------------+ +------------+ +------------+ |   
+            | |     vm1    | |    vm2     | |    vm3     | |    
+            | +----ens3----+ +---ens3-----+ +---ens3-----+ |   
+            |      |  |.1/24        |.2/24         |.3/24  |    
+            +------|--|-------------|--------------|-------+    
+                   |  |             |              |                     
+                   |  |             |              |             
+                   |  |             |              |              
+                   |  |---------vlan 100 (external)-----
+                   |              10.123.123.0/24   |              
+                   |                                |     
+                   |                          [mpqemubr0.100]          
+                   |                         10.123.123.254/24          
+                   |                                                                       
+             ------|------ native vlan (internal)------
+                        |         10.65.94.0/24        
+                        |
+                        |
+                 [mpqemubr0]
+                 10.65.94.1/24
+```
+On the host where VM are executed, execute the following script:
+
+```
+curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/external-net.sh | sh
+```
+
+### Metalb Deployment
+
+We'll use info from https://metallb.universe.tf/installation. We also choose the k8s/FRR version because we're a bunch of network nerds.
+To deploy metalb, just apply the following manifest in master (vm1):
+``` 
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-frr-k8s.yaml
+```
+
+### Test in L2 mode
+
+We want to expose a dedicated load balancer IP=10.123.123.100 outside the cluster thanks to the external vlan.
+
+```
+           +-----------------------------------------------+    
+            |                   Cluster                     |    
+            | +------------+ +------------+  +------------+ |   
+            | |   nginx-1  | |   nginx-2  |  |   nginx-3  | |
+            | |            | |            |  |            | |
+            | |    vm1     | |    vm2     |  |     vm3    | |
+            | |            | |            |  |            | |
+            | +----ens3.100+ +---ens3.100-+ +---ens3.100--+ |   
+            |        |             |              |         |    
+            +--------|-------------|--------------|---------+    
+                     |             |              |  
+                [ ========= VIP =  10.123.123.100 =========]                  
+                     |             |              |             
+                     |             |              |              
+                  ---+--+------vlan 100 (external)+-----
+                        |         10.123.123.0/24         
+                        |
+                        |
+                 [mpqemubr0.100]
+                 10.123.123.1/24
+```
+Deploy the metalb service in L2 mode. It will reach the same pods as the basic nginx service thanks to selector.
+
+```
+curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/metalb-l2 | sh
+```
+
+
+
+
+
+
+
 
 
 
