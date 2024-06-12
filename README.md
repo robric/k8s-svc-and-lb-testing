@@ -15,7 +15,7 @@ I just start with an ubuntu server with:
 
 Just run the following command.
 ```
-curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/deploy.sh | sh
 ```
 We'll get 3 VMs with kubernetes running (k3s inside)
 ```console
@@ -370,6 +370,15 @@ ubuntu@vm1:~$
 #                                                                                   ----> KUBE-SEP-LNMZPQ2U2A5TEEGP (DNAT to 10.42.0.8:80)
 # 
 ```
+
+### Nodeport 
+
+Deploy nodeport service:
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-np-svc.yaml
+````
+
+
 
 
 
