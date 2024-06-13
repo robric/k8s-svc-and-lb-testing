@@ -511,7 +511,7 @@ We want to expose a dedicated load balancer IP=10.123.123.100 outside the cluste
             |        |             |              |         |    
             +--------|-------------|--------------|---------+    
                      |             |              |  
-                [ ========= VIP =  10.123.123.100 =========]                  
+                [ ========= VIP = 10.123.123.100:80 =========]                  
                      |             |              |             
                      |             |              |              
                   ---+--+------vlan 100 (external)+-----
@@ -524,22 +524,65 @@ We want to expose a dedicated load balancer IP=10.123.123.100 outside the cluste
 Deploy the metalb service in L2 mode. It will reach the same pods as the basic nginx service thanks to selector.
 
 ```
-curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/metalb-l2 | sh
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-mlb-svc.yaml
 ```
 We're having now a new service of Type LoadBalancer which has an external IP.
 
-```console
+```
 ubuntu@vm1:~$ kubectl get svc
-NAME               TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)        AGE
-kubernetes         ClusterIP      10.43.0.1       <none>           443/TCP        2d1h
-nginx-service      ClusterIP      10.43.180.238   <none>           80/TCP         2d1h
-nginx-np-service   NodePort       10.43.143.108   <none>           80:30000/TCP   3h34m
-nginx-mlb-l2       LoadBalancer   10.43.137.239   10.123.123.100   80:30231/TCP   19m
-ubuntu@vm1:~$
+NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)        AGE
+kubernetes             ClusterIP      10.43.0.1       <none>           443/TCP        3d1h
+nginx-service          ClusterIP      10.43.180.238   <none>           80/TCP         3d1h
+nginx-np-service       NodePort       10.43.143.108   <none>           80:30000/TCP   27h
+nginx-mlb-l2-service   LoadBalancer   10.43.159.55    10.123.123.100   80:30329/TCP   10s
+ubuntu@vm1:~$ 
+```
+We can notice that this an extension of nodeport (a random 30329 port is chosen), the latter being an extension of cluster IP.
+We can issue a few request, both from:
+- VM1 (the master/worker node)
+- An external endpoint such as the host (here fiveg-host-24-node4).
+```
+ubuntu@vm1:~$ curl 10.123.123.100:80
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.2.19 
+ 
+ubuntu@vm1:~$ curl 10.123.123.100:80
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.2.19 
+ root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.1.20 
+ 
+root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.0.24 
+ 
+root@fiveg-host-24-node4:~#
+```
+We can check the owner of the VIP thanks to mac inspection
+
+```
+root@fiveg-host-24-node4:~#  arp -na | grep .123.123
+? (10.123.123.2) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100  <============= VIP
+? (10.123.123.1) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100  <============== Whaaat vm1 IP has VM2 mac ???
+? (10.123.123.100) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100 <============= VIP
+root@fiveg-host-24-node4:~# 
+
+ubuntu@vm2:~$ ip link show dev ens3
+2: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
+    link/ether 52:54:00:c0:87:a0 brd ff:ff:ff:ff:ff:ff
+    altname enp0s3
+ubuntu@vm2:~$ 
+#
+# This is weird: 52:54:00:c0:87:a0 is vm2 and we see that vm1 123.123.123.1 is resolved to this mac. 
+# This result in trafic tromboning.
+# It seems we're having some side effect of L2 advertisement mode.
+#
 ``` 
-Again there is always a default Cluster IP that is attached (business as usual), which is reachable via port 80.
-
-
 
 
 
