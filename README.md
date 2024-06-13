@@ -1,4 +1,4 @@
-# Playing around with 3-node kubernetes cluster
+# Looking under the hood of k8s service on 3-node k8s cluster 
 
 This page is:
 - a quick copy-paste source for rapidly bringing up test scenarios.
