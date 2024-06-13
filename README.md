@@ -566,22 +566,25 @@ root@fiveg-host-24-node4:~#
 We can check the owner of the VIP thanks to mac inspection
 
 ```
+From external host/gw:
+
 root@fiveg-host-24-node4:~#  arp -na | grep .123.123
 ? (10.123.123.2) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100  <============= VIP
 ? (10.123.123.1) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100  <============== Whaaat vm1 IP has VM2 mac ???
 ? (10.123.123.100) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100 <============= VIP
 root@fiveg-host-24-node4:~# 
 
+From vm2:
 ubuntu@vm2:~$ ip link show dev ens3
 2: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
-    link/ether 52:54:00:c0:87:a0 brd ff:ff:ff:ff:ff:ff
-    altname enp0s3
-ubuntu@vm2:~$ 
-#
-# This is weird: 52:54:00:c0:87:a0 is vm2 and we see that vm1 123.123.123.1 is resolved to this mac. 
-# This result in trafic tromboning.
-# It seems we're having some side effect of L2 advertisement mode.
-#
+    link/ether 52:54:00:c0:87:a0 brd ff:ff:ff:ff:ff:ff <========================= This is the mac
+
+If we ping from host to vm1 we see packets transiting via vm2:
+
+ubuntu@vm2:~$ sudo tcpdump -evni ens3.100
+tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+05:59:14.860278 52:54:00:e4:50:da > 52:54:00:c0:87:a0, ethertype IPv4 (0x0800), length 98: (tos 0x0, ttl 64, id 32968, offset 0, flags [DF], proto ICMP (1), length 84)
+    10.123.123.254 > 10.123.123.1: ICMP echo request, id 240, seq 1, length 64
 ``` 
 
 
