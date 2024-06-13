@@ -528,20 +528,20 @@ kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/m
 ```
 We're having now a new service of Type LoadBalancer which has an external IP.
 
-```
-ubuntu@vm1:~$ kubectl get svc
-NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)        AGE
-kubernetes             ClusterIP      10.43.0.1       <none>           443/TCP        3d1h
-nginx-service          ClusterIP      10.43.180.238   <none>           80/TCP         3d1h
-nginx-np-service       NodePort       10.43.143.108   <none>           80:30000/TCP   27h
-nginx-mlb-l2-service   LoadBalancer   10.43.159.55    10.123.123.100   80:30329/TCP   10s
-ubuntu@vm1:~$ 
+```console
+ubuntu@vm1:~$ kubectl get pods -o wide
+NAME                                   READY   STATUS    RESTARTS   AGE    IP           NODE   NOMINATED NODE   READINESS GATES
+[...]
+nginx-lbl2-577c9489d-zzkf2             1/1     Running   0          12m    10.42.2.19   vm3    <none>           <none>
+nginx-lbl2-577c9489d-879qj             1/1     Running   0          12m    10.42.1.20   vm2    <none>           <none>
+nginx-lbl2-577c9489d-zl8cs             1/1     Running   0          12m    10.42.0.24   vm1    <none>           <none>
+
 ```
 We can notice that this an extension of nodeport (a random 30329 port is chosen), the latter being an extension of cluster IP.
 We can issue a few request, both from:
 - VM1 (the master/worker node)
 - An external endpoint such as the host (here fiveg-host-24-node4).
-```
+```console
 ubuntu@vm1:~$ curl 10.123.123.100:80
 
  Welcome to NGINX! 
