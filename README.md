@@ -497,6 +497,8 @@ kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/confi
 
 ### Test in L2 mode
 
+#### Deployment with 3 pods and Single VIP in the external network
+
 We want to expose a dedicated load balancer IP=10.123.123.100 outside the cluster thanks to the external vlan.
 
 ```
@@ -590,12 +592,68 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 05:59:14.860278 52:54:00:e4:50:da > 52:54:00:c0:87:a0, ethertype IPv4 (0x0800), length 98: (tos 0x0, ttl 64, id 32968, offset 0, flags [DF], proto ICMP (1), length 84)
     10.123.123.254 > 10.123.123.1: ICMP echo request, id 240, seq 1, length 64
 #
-# We can check that proxy arp is disbled
+# We can check that proxy arp is disabled
 #
 ubuntu@vm2:~$ cat /proc/sys/net/ipv4/conf/ens3.100/proxy_arp
 0
-``` 
+```
 
+#### Change: test of  "externalTrafficPolicy: Local" with 6 pods 
+
+We're slightly changing the previous and add some replicas so we can check the load balancing within a node.
+
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-mlb-l2-service
+[...]
+spec:
+  externalTrafficPolicy: Local
+[...]
+```
+
+```console
+ubuntu@vm1:~$  kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-mlb-svc-local.yaml
+service/nginx-mlb-l2-service configured
+ipaddresspool.metallb.io/external-pool unchanged
+l2advertisement.metallb.io/l2-metalb unchanged
+configmap/nginx-conf unchanged
+deployment.apps/nginx-lbl2 configured
+ubuntu@vm1:~$
+ubuntu@vm1:~$ kubectl get pods -o wide 
+NAME                                   READY   STATUS    RESTARTS   AGE    IP           NODE   NOMINATED NODE   READINESS GATES
+[...]
+nginx-lbl2-577c9489d-zzkf2             1/1     Running   0          38m    10.42.2.19   vm3    <none>           <none>
+nginx-lbl2-577c9489d-879qj             1/1     Running   0          38m    10.42.1.20   vm2    <none>           <none>
+nginx-lbl2-577c9489d-zl8cs             1/1     Running   0          38m    10.42.0.24   vm1    <none>           <none>
+nginx-lbl2-577c9489d-7kw2w             1/1     Running   0          67s    10.42.2.20   vm3    <none>           <none>
+nginx-lbl2-577c9489d-fvk7g             1/1     Running   0          67s    10.42.1.21   vm2    <none>           <none>
+nginx-lbl2-577c9489d-fclfn             1/1     Running   0          67s    10.42.0.25   vm1    <none>           <none>
+ubuntu@vm1:~$ 
+```
+We can verify that the trafic is dispatched solelty to pods living in the same master server (vm2). 
+ - 10.42.1.20   vm2 
+ - 10.42.1.21   vm2 
+```console
+root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.1.21 
+ 
+root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.1.20 
+ 
+root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.1.20 
+ 
+root@fiveg-host-24-node4:~#
+etc.
+``` 
 
 
 
