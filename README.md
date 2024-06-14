@@ -671,10 +671,10 @@ ubuntu@vm1:~$  curl 10.123.123.100
  This is the pod IP address: 10.42.1.20 
  
 #
-# Let's do 2 things:
-#    - trace iptables activity in vm1
+#  Trace iptables activity in vm1 by checking the counter which increases from 7 to 8 packets (these are slow path packets -
+#  there are more packets than that).
+#  Use TCPdump on vm2 to trace packets with the VIP destination address 10.123.123.100 
 #
-
 
 ubuntu@vm1:~$ sudo nft  list table nat | grep 123.100
                 meta l4proto tcp ip daddr 10.123.123.100  tcp dport 80 counter packets 7 bytes 420 jump KUBE-EXT-W47NQ5DDJKUWFTVY
@@ -684,10 +684,19 @@ ubuntu@vm1:~$ curl 10.123.123.100
  Welcome to NGINX! 
  This is the pod IP address: 10.42.1.21 
  
-ubuntu@vm1:~$ 
 ubuntu@vm1:~$ sudo nft  list table nat | grep 123.100
                 meta l4proto tcp ip daddr 10.123.123.100  tcp dport 80 counter packets 8 bytes 480 jump KUBE-EXT-W47NQ5DDJKUWFTVY
-ubuntu@vm1:~$ 
+
+
+ubuntu@vm2:~$ sudo tcpdump -evni ens3 "tcp and host 10.123.123.100"
+tcpdump: listening on ens3, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+^C
+0 packets captured
+0 packets received by filter
+0 packets dropped by kernel
+ubuntu@vm2:~$ 
+
+
 ```
 
 #### Change: test of  "externalTrafficPolicy: Local" with 6 pods 
@@ -747,6 +756,10 @@ root@fiveg-host-24-node4:~#
 etc.
 ``` 
 iptables have been modified to accomodate this change: each node getting 
+
+So 
+```
+```
 
 
 
