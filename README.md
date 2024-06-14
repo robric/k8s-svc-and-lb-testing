@@ -763,7 +763,7 @@ root@fiveg-host-24-node4:~#
 etc.
 ``` 
 However, if we try from a pod in vm1... the trafic is dispatched anywhere. 
-```
+```console
 ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
 
  Welcome to NGINX! 
@@ -779,7 +779,7 @@ ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
 
 Let's dig in the nat rules to understand what is happening. 
 
-```
+```console
 #
 # with externalTrafficPolicy: Cluster (default)
 #
@@ -828,7 +828,7 @@ spec:
   internalTrafficPolicy: Local              <======================== let's try that 
 ```
 It does not work unfortunately.
-```
+```console
 #
 # The rule is unchanged pod subnet is still routed to the KUBE-SVC service made up of 6 pods.
 #
@@ -843,7 +843,6 @@ ubuntu@vm1:~$
 # There is no magic: curl requests are spread everywhere
 #
 
-```
 ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
 
  Welcome to NGINX! 
