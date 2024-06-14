@@ -696,12 +696,20 @@ tcpdump: listening on ens3, link-type EN10MB (Ethernet), snapshot length 262144 
 0 packets dropped by kernel
 ubuntu@vm2:~$ 
 
+#
+# We can verify that this is the same for trafic from pods.
+#
 
+ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.0.25 
+ 
 ```
 
-#### Change: test of  "externalTrafficPolicy: Local" with 6 pods 
+#### Test of  "externalTrafficPolicy: Local" with 6 pods 
 
-We're slightly changing the previous and add some replicas so we can check the load balancing within a node.
+We're slightly changing the previous and add some replicas (6) so we can check the load balancing within a node.
 
 ```
 apiVersion: v1
@@ -725,41 +733,131 @@ ubuntu@vm1:~$
 ubuntu@vm1:~$ kubectl get pods -o wide 
 NAME                                   READY   STATUS    RESTARTS   AGE    IP           NODE   NOMINATED NODE   READINESS GATES
 [...]
-nginx-lbl2-577c9489d-zzkf2             1/1     Running   0          38m    10.42.2.19   vm3    <none>           <none>
-nginx-lbl2-577c9489d-879qj             1/1     Running   0          38m    10.42.1.20   vm2    <none>           <none>
-nginx-lbl2-577c9489d-zl8cs             1/1     Running   0          38m    10.42.0.24   vm1    <none>           <none>
-nginx-lbl2-577c9489d-7kw2w             1/1     Running   0          67s    10.42.2.20   vm3    <none>           <none>
-nginx-lbl2-577c9489d-fvk7g             1/1     Running   0          67s    10.42.1.21   vm2    <none>           <none>
-nginx-lbl2-577c9489d-fclfn             1/1     Running   0          67s    10.42.0.25   vm1    <none>           <none>
-ubuntu@vm1:~$ 
+nginx-lbl2-577c9489d-879qj             1/1     Running   0          26h    10.42.1.20   vm2    <none>           <none>
+nginx-lbl2-577c9489d-fvk7g             1/1     Running   0          26h    10.42.1.21   vm2    <none>           <none>
+nginx-lbl2-577c9489d-fclfn             1/1     Running   0          26h    10.42.0.25   vm1    <none>           <none>
+nginx-lbl2-577c9489d-kjfdv             1/1     Running   0          30m    10.42.0.26   vm1    <none>           <none>
+nginx-lbl2-577c9489d-w7dls             1/1     Running   0          30m    10.42.2.22   vm3    <none>           <none>
+nginx-lbl2-577c9489d-bfj8v             1/1     Running   0          30m    10.42.2.21   vm3    <none>           <none>
 ```
-We can verify that the trafic is dispatched solelty to pods living in the same master server (vm2). 
- - 10.42.1.20   vm2 
- - 10.42.1.21   vm2 
+We can verify that the trafic is dispatched solely to pods living in the same master server (vm2): 
+ - 10.42.1.20   
+ - 10.42.1.21   
 ```console
-root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+root@fiveg-host-24-node4:~# curl 10.123.123.100
 
  Welcome to NGINX! 
  This is the pod IP address: 10.42.1.21 
  
-root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+root@fiveg-host-24-node4:~# curl 10.123.123.100
 
  Welcome to NGINX! 
  This is the pod IP address: 10.42.1.20 
  
-root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+root@fiveg-host-24-node4:~# curl 10.123.123.100
 
  Welcome to NGINX! 
  This is the pod IP address: 10.42.1.20 
  
-root@fiveg-host-24-node4:~#
+root@fiveg-host-24-node4:~# 
 etc.
 ``` 
-iptables have been modified to accomodate this change: each node getting 
+However, if we try from a pod in vm1... the trafic is dispatched anywhere. 
+```
+ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
 
-So 
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.0.25 
+ 
+ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
+ 
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.0.26 
+ 
+...
 ```
+
+Let's dig in the nat rules to understand what is happening. 
+
 ```
+#
+# with externalTrafficPolicy: Cluster (default)
+#
+ubuntu@vm1:~$ sudo iptables -t nat -S KUBE-EXT-W47NQ5DDJKUWFTVY -v 
+-N KUBE-EXT-W47NQ5DDJKUWFTVY
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -m comment --comment "masquerade traffic for default/nginx-mlb-l2-service external destinations" -c 0 0 -j KUBE-MARK-MASQ
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -c 0 0 -j KUBE-SVC-W47NQ5DDJKUWFTVY
+#
+# with externalTrafficPolicy: Local
+#
+ubuntu@vm1:~$ sudo iptables -t nat -S KUBE-EXT-W47NQ5DDJKUWFTVY -v 
+-N KUBE-EXT-W47NQ5DDJKUWFTVY
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -s 10.42.0.0/16 -m comment --comment "pod traffic for default/nginx-mlb-l2-service external destinations" -c 0 0 -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -m comment --comment "masquerade LOCAL traffic for default/nginx-mlb-l2-service external destinations" -m addrtype --src-type LOCAL -c 0 0 -j KUBE-MARK-MASQ
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -m comment --comment "route LOCAL traffic for default/nginx-mlb-l2-service external destinations" -m addrtype --src-type LOCAL -c 0 0 -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -c 0 0 -j KUBE-SVL-W47NQ5DDJKUWFTVY
+
+Two noticable changes in KUBE-EXT-W47NQ5DDJKUWFTVY
+ - A test for source in 10.42.0.0.0/16 (= pod IPs) whic calls the KUBE-SVC-W47NQ5DDJKUWFTVY rule which has the 6 pods of the deployment. 
+ - The default rule is changed to KUBE-SVL-W47NQ5DDJKUWFTVY which has the 2 local pods.
+
+ubuntu@vm1:~$ sudo iptables -t nat -S KUBE-SVL-W47NQ5DDJKUWFTVY -v 
+-N KUBE-SVL-W47NQ5DDJKUWFTVY
+-A KUBE-SVL-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.0.25:8080" -m statistic --mode random --probability 0.50000000000 -c 0 0 -j KUBE-SEP-H3SFLVALEZ5LECV3
+-A KUBE-SVL-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.0.26:8080" -c 0 0 -j KUBE-SEP-JIHH5JQABFO67SHN
+ubuntu@vm1:~$ sudo iptables -t nat -S KUBE-SVC-W47NQ5DDJKUWFTVY -v 
+-N KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-SVC-W47NQ5DDJKUWFTVY ! -s 10.42.0.0/16 -d 10.43.159.55/32 -p tcp -m comment --comment "default/nginx-mlb-l2-service cluster IP" -m tcp --dport 80 -c 0 0 -j KUBE-MARK-MASQ
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.0.25:8080" -m statistic --mode random --probability 0.16666666651 -c 0 0 -j KUBE-SEP-H3SFLVALEZ5LECV3
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.0.26:8080" -m statistic --mode random --probability 0.20000000019 -c 0 0 -j KUBE-SEP-JIHH5JQABFO67SHN
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.1.20:8080" -m statistic --mode random --probability 0.25000000000 -c 0 0 -j KUBE-SEP-U6NBO3SO7ES56QIU
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.1.21:8080" -m statistic --mode random --probability 0.33333333349 -c 0 0 -j KUBE-SEP-UV3QYGUSRGNZ7JSO
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.2.21:8080" -m statistic --mode random --probability 0.50000000000 -c 0 0 -j KUBE-SEP-5XVJDSQ32SUUTXIC
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.2.22:8080" -c 0 0 -j KUBE-SEP-DTKU7V2IJOC7TTKI
+ubuntu@vm1:~$ 
+```
+Let's try to toggle the  nginx-mlb-l2-service with internalTrafficPolicy to Local.
+```
+kind: Service
+metadata:
+[...]
+  name: nginx-mlb-l2-service
+spec:
+[...]
+  externalTrafficPolicy: Local
+  internalTrafficPolicy: Local              <======================== let's try that 
+```
+It does not work unfortunately.
+```
+#
+# The rule is unchanged pod subnet is still routed to the KUBE-SVC service made up of 6 pods.
+#
+ubuntu@vm1:~$ sudo iptables -t nat -S KUBE-EXT-W47NQ5DDJKUWFTVY -v 
+-N KUBE-EXT-W47NQ5DDJKUWFTVY
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -s 10.42.0.0/16 -m comment --comment "pod traffic for default/nginx-mlb-l2-service external destinations" -c 0 0 -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -m comment --comment "masquerade LOCAL traffic for default/nginx-mlb-l2-service external destinations" -m addrtype --src-type LOCAL -c 0 0 -j KUBE-MARK-MASQ
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -m comment --comment "route LOCAL traffic for default/nginx-mlb-l2-service external destinations" -m addrtype --src-type LOCAL -c 0 0 -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -c 0 0 -j KUBE-SVL-W47NQ5DDJKUWFTVY
+ubuntu@vm1:~$
+#
+# There is no magic: curl requests are spread everywhere
+#
+
+```
+ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.0.25  <========================= vm1
+ 
+ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.2.21 <========================= vm2
+ 
+ubuntu@vm1:~$
+```
+
+
 
 
 
