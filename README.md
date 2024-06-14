@@ -375,8 +375,22 @@ Deploy nodeport service with:
 - nodeport port: 30000
 - svc port: 80
 - container port: 8080
-Note that nodeport has cluster IP since this is the same logic for intra-cluster communication (i.e. reaching the service from test-pod in previous section).
-
+In other KRM words, this is what we have:
+```apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-np-service
+spec:
+  selector:
+    app: nginx-np
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+      nodePort: 30000
+  type: NodePort
+```
+Let's start a new deployment with this nodeport:
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-np-svc.yaml
 ````
@@ -389,6 +403,8 @@ nginx-service      ClusterIP   10.43.180.238   <none>        80/TCP         46h 
 nginx-np-service   NodePort    10.43.143.108   <none>        80:30000/TCP   20s   app=nginx-np
 ubuntu@vm1:~$ 
 ```
+Note that nodeport has cluster IP since this is the same logic for intra-cluster communication (i.e. reaching the service from test-pod in previous section).
+
 We see that an additional port is now exposed (30000) for access via nodeport for external connectivity (although this is not recommended).
 Now let's have a look at the iptables logic.
 ```
