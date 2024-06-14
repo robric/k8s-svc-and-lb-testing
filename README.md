@@ -375,6 +375,7 @@ Deploy nodeport service with:
 - nodeport port: 30000
 - svc port: 80
 - container port: 8080
+
 In other KRM words, this is what we have:
 ```apiVersion: v1
 kind: Service
@@ -547,42 +548,43 @@ kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/m
 We're having now a new service of Type LoadBalancer which has an external IP.
 
 ```console
-ubuntu@vm1:~$ kubectl get pods -o wide
-NAME                                   READY   STATUS    RESTARTS   AGE    IP           NODE   NOMINATED NODE   READINESS GATES
-[...]
-nginx-lbl2-577c9489d-zzkf2             1/1     Running   0          12m    10.42.2.19   vm3    <none>           <none>
-nginx-lbl2-577c9489d-879qj             1/1     Running   0          12m    10.42.1.20   vm2    <none>           <none>
-nginx-lbl2-577c9489d-zl8cs             1/1     Running   0          12m    10.42.0.24   vm1    <none>           <none>
+ubuntu@vm1:~$ kubectl  get svc -o wide
+NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)        AGE    SELECTOR
+kubernetes             ClusterIP      10.43.0.1       <none>           443/TCP        4d1h   <none>
+nginx-service          ClusterIP      10.43.180.238   <none>           80/TCP         4d1h   app=nginx
+nginx-np-service       NodePort       10.43.143.108   <none>           80:30000/TCP   2d3h   app=nginx-np
+nginx-mlb-l2-service   LoadBalancer   10.43.159.55    10.123.123.100   80:30329/TCP   23h    app=nginx-lbl2
+
+ubuntu@vm1:~$ kubectl  get pods -o wide | grep l2
+nginx-lbl2-577c9489d-879qj             1/1     Running   0          23h    10.42.1.20   vm2    <none>           <none>
+nginx-lbl2-577c9489d-fvk7g             1/1     Running   0          23h    10.42.1.21   vm2    <none>           <none>
+nginx-lbl2-577c9489d-fclfn             1/1     Running   0          23h    10.42.0.25   vm1    <none>           <none>
+ubuntu@vm1:~$ 
 
 ```
 We can notice that this an extension of nodeport (a random 30329 port is chosen), the latter being an extension of cluster IP.
 We can issue a few request, both from:
-- VM1 (the master/worker node)
+- vm1 (the master/worker node)
 - An external endpoint such as the host (here fiveg-host-24-node4).
 ```console
-ubuntu@vm1:~$ curl 10.123.123.100:80
+ubuntu@vm1:~$ curl 10.123.123.100
 
  Welcome to NGINX! 
- This is the pod IP address: 10.42.2.19 
+ This is the pod IP address: 10.42.1.21 
  
-ubuntu@vm1:~$ curl 10.123.123.100:80
+ubuntu@vm1:~$ curl 10.123.123.100
 
  Welcome to NGINX! 
- This is the pod IP address: 10.42.2.19 
- root@fiveg-host-24-node4:~# curl 10.123.123.100:80
+ This is the pod IP address: 10.42.0.25 
+ 
+ubuntu@vm1:~$ 
+ 
+root@fiveg-host-24-node4:~# curl 10.123.123.100
 
  Welcome to NGINX! 
  This is the pod IP address: 10.42.1.20 
- 
-root@fiveg-host-24-node4:~# curl 10.123.123.100:80
-
- Welcome to NGINX! 
- This is the pod IP address: 10.42.0.24 
- 
-root@fiveg-host-24-node4:~#
 ```
 We can check the owner of the VIP thanks to mac inspection, we also see some side effect 
-
 ```
 #
 # From external host/gw:
@@ -612,6 +614,80 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 #
 ubuntu@vm2:~$ cat /proc/sys/net/ipv4/conf/ens3.100/proxy_arp
 0
+```
+Here is the bulk of iptables for bookkeeping. Just look at the diagram right after: the lb is basically another branch to the external service associated with the nodeport.
+```
+ubuntu@vm1:~$ sudo iptables-save | grep  10.123.123.100
+-A KUBE-SERVICES -d 10.123.123.100/32 -p tcp -m comment --comment "default/nginx-mlb-l2-service loadbalancer IP" -m tcp --dport 80 -j KUBE-EXT-W47NQ5DDJKUWFTVY
+ubuntu@vm1:~$ sudo iptables-save | grep KUBE-EXT-W47NQ5DDJKUWFTVY
+:KUBE-EXT-W47NQ5DDJKUWFTVY - [0:0]
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -m comment --comment "masquerade traffic for default/nginx-mlb-l2-service external destinations" -j KUBE-MARK-MASQ
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-NODEPORTS -p tcp -m comment --comment "default/nginx-mlb-l2-service" -m tcp --dport 30329 -j KUBE-EXT-W47NQ5DDJKUWFTVY
+-A KUBE-SERVICES -d 10.123.123.100/32 -p tcp -m comment --comment "default/nginx-mlb-l2-service loadbalancer IP" -m tcp --dport 80 -j KUBE-EXT-W47NQ5DDJKUWFTVY
+ubuntu@vm1:~$ sudo iptables-save | grep 10.43.159.55
+-A KUBE-SERVICES -d 10.43.159.55/32 -p tcp -m comment --comment "default/nginx-mlb-l2-service cluster IP" -m tcp --dport 80 -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-SVC-W47NQ5DDJKUWFTVY ! -s 10.42.0.0/16 -d 10.43.159.55/32 -p tcp -m comment --comment "default/nginx-mlb-l2-service cluster IP" -m tcp --dport 80 -j KUBE-MARK-MASQ
+ubuntu@vm1:~$ sudo iptables-save | grep KUBE-SVC-W47NQ5DDJKUWFTVY
+:KUBE-SVC-W47NQ5DDJKUWFTVY - [0:0]
+-A KUBE-EXT-W47NQ5DDJKUWFTVY -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-SERVICES -d 10.43.159.55/32 -p tcp -m comment --comment "default/nginx-mlb-l2-service cluster IP" -m tcp --dport 80 -j KUBE-SVC-W47NQ5DDJKUWFTVY
+-A KUBE-SVC-W47NQ5DDJKUWFTVY ! -s 10.42.0.0/16 -d 10.43.159.55/32 -p tcp -m comment --comment "default/nginx-mlb-l2-service cluster IP" -m tcp --dport 80 -j KUBE-MARK-MASQ
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.0.25:8080" -m statistic --mode random --probability 0.33333333349 -j KUBE-SEP-H3SFLVALEZ5LECV3
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.1.20:8080" -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-U6NBO3SO7ES56QIU
+-A KUBE-SVC-W47NQ5DDJKUWFTVY -m comment --comment "default/nginx-mlb-l2-service -> 10.42.1.21:8080" -j KUBE-SEP-UV3QYGUSRGNZ7JSO
+ubuntu@vm1:~$ 
+```
+In more human-friendly ways:
+```
+KUBE-SERVICES -d 10.43.159.55/32 -p tcp --dport 80---> KUBE-SVC-W47NQ5DDJKUWFTVY +--> DNAT  to 10.42.0.25:8080 / KUBE-SEP-H3SFLVALEZ5LECV3 
+                                                         ^                       |--> DNAT  to 10.42.1.20:8080 / KUBE-SEP-U6NBO3SO7ES56QIU
+                                                         |                       |--> DNAT  to 10.42.1.21:8080 / KUBE-SEP-UV3QYGUSRGNZ7JSO
+                                            KUBE-EXT-W47NQ5DDJKUWFTVY
+                                                        ^   ^                              
+KUBE-NODEPORTS -m tcp --dport 30329         ------------|   |
+                                                            | 
+                                                            | 
+KUBE-SERVICES -d 10.123.123.100/32 -p tcp --dport 80 -------|
+```
+
+
+#### "in-cluster" trafic to external VIP 10.123.123.100
+
+It is interesting to understand what happens when trafic is sent to the VIP from within the cluster.
+Indeed vm1 has ARP entry 10.123.123.100 for vm2... So it is tempting to say that that the request may be sent to VM2... but no it won't !!! iptables will intercept it.
+
+```
+#
+# From vm1:
+#
+
+ubuntu@vm1:~$ arp -na
+? (10.123.123.100) at 52:54:00:c0:87:a0 [ether] on ens3.100  <=================== this is vm2 mac address
+
+ubuntu@vm1:~$  curl 10.123.123.100
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.1.20 
+ 
+#
+# Let's do 2 things:
+#    - trace iptables activity in vm1
+#
+
+
+ubuntu@vm1:~$ sudo nft  list table nat | grep 123.100
+                meta l4proto tcp ip daddr 10.123.123.100  tcp dport 80 counter packets 7 bytes 420 jump KUBE-EXT-W47NQ5DDJKUWFTVY
+
+ubuntu@vm1:~$ curl 10.123.123.100
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.1.21 
+ 
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ sudo nft  list table nat | grep 123.100
+                meta l4proto tcp ip daddr 10.123.123.100  tcp dport 80 counter packets 8 bytes 480 jump KUBE-EXT-W47NQ5DDJKUWFTVY
+ubuntu@vm1:~$ 
 ```
 
 #### Change: test of  "externalTrafficPolicy: Local" with 6 pods 
@@ -670,7 +746,7 @@ root@fiveg-host-24-node4:~# curl 10.123.123.100:80
 root@fiveg-host-24-node4:~#
 etc.
 ``` 
-
+iptables have been modified to accomodate this change: each node getting 
 
 
 
