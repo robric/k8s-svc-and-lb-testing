@@ -830,7 +830,7 @@ spec:
 It does not work unfortunately.
 ```console
 #
-# The rule is unchanged pod subnet is still routed to the KUBE-SVC service made up of 6 pods.
+# The rule is unchanged: the pod subnet is still routed to the KUBE-SVC service (with 6 pods)
 #
 ubuntu@vm1:~$ sudo iptables -t nat -S KUBE-EXT-W47NQ5DDJKUWFTVY -v 
 -N KUBE-EXT-W47NQ5DDJKUWFTVY
