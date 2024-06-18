@@ -15,7 +15,7 @@ I just start with an ubuntu server with:
 
 Just run the following command.
 ```
-curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/deploy.sh | sh
+curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/deploy.sh | sh
 ```
 We'll get 3 VMs with kubernetes running (k3s inside)
 ```console
@@ -56,7 +56,7 @@ kubectl run test-pod --image=nicolaka/netshoot --command -- sleep infinity
 Next let's start a with basic service (cluster IP). This will create a multi-node cluster made up of 3VM based on k3s. 
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-svc.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-svc.yaml
 ```
 
 This is what we get:
@@ -393,7 +393,7 @@ spec:
 ```
 Let's start a new deployment with this nodeport:
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-np-svc.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-np-svc.yaml
 ````
 After deployment we have the following:
 ```console
@@ -501,7 +501,7 @@ We're now adding an external interface to the current networking thanks to a vla
 On the host where VM are executed, execute the following script:
 
 ```
-curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/external-net.sh | sh
+curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/external-net.sh | sh
 ```
 
 ### Metalb Deployment
@@ -543,7 +543,7 @@ We want to expose a dedicated load balancer IP=10.123.123.100 outside the cluste
 Deploy the metalb service in L2 mode. It will reach the same pods as the basic nginx service thanks to selector.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-mlb-svc.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-svc.yaml
 ```
 We're having now a new service of Type LoadBalancer which has an external IP.
 
@@ -723,7 +723,7 @@ spec:
 ```
 
 ```console
-ubuntu@vm1:~$  kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/nginx-mlb-svc-local.yaml
+ubuntu@vm1:~$  kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-svc-local.yaml
 service/nginx-mlb-l2-service configured
 ipaddresspool.metallb.io/external-pool unchanged
 l2advertisement.metallb.io/l2-metalb unchanged
