@@ -856,13 +856,13 @@ ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
 ubuntu@vm1:~$
 ```
 
-#### SNAT enforcement for incoming trafic
+#### Source NAT (masquerade) enforcement for incoming trafic
 
 There is a subtle behavior change when playing with externalTrafficPolicy related to the enforcment of SNAT:
 - externalTrafficPolicy: Cluster (default)
-SNAT is enforced for incoming trafic. 
+Source NAT is enforced for incoming trafic from external sources 
 - externalTrafficPolicy: Local 
-SNAT is NOT enforced for incoming trafic.
+Source NAT is NOT enforced for incoming trafic from external sources
 
 ```console
 ubuntu@vm1:~$ kubectl get pods -o wide | grep vm2
