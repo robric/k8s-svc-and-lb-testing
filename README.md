@@ -890,7 +890,7 @@ listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
 
 ``` 
 
-This is due to masquerading (-j MASK) configured in iptables for the EXT rule
+This is due to masquerading (-j MASQ) configured in iptables for the EXT rule
 
 ```
 #
@@ -935,6 +935,80 @@ Chain KUBE-EXT-W47NQ5DDJKUWFTVY (2 references)
 --> 1   120 KUBE-SVC-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* route LOCAL traffic for default/nginx-mlb-l2-service external destinations */ ADDRTYPE match src-type LOCAL
     2   120 KUBE-SVL-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
 ubuntu@vm2:~$  
+'''
+#### External Routing from within pods
+
+This is where things gets a bit more complicated: assume pod can be used to forward traffic (e.g. the pod terminates a Tunnel like IPSEC). We have sources, which raises concerns on how the trafic is routed back. 
+
+Spawn netshoot pod on vm1. 
+'''
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/test-pod-vm1.yaml
+'''
+And add some external address within this pod.
+'''
+ubuntu@vm1:~$ kubectl describe pod test-pod-vm1 | grep container
+    Container ID:  containerd://87f8f7961ee33c3c2d439621aa88bf4a882ac2538bec7526039a5e21e494ee14
+
+ubuntu@vm1:~$ sudo ctr c info  87f8f7961ee33c3c2d439621aa88bf4a882ac2538bec7526039a5e21e494ee14  |  grep -C 5 pid
+                }
+            },
+            "cgroupsPath": "kubepods-besteffort-podbf227f8b_8058_49b8_be42_1b73feb8a803.slice:cri-containerd:87f8f7961ee33c3c2d439621aa88bf4a882ac2538bec7526039a5e21e494ee14",
+            "namespaces": [
+                {
+                    "type": "pid"
+                },
+                {
+                    "type": "ipc",
+                    "path": "/proc/555560/ns/ipc"
+                },
+ubuntu@vm1:~$
+ubuntu@vm1:~$ sudo nsenter -t 555560 -n
+root@vm1:/home/ubuntu# ip link add br-inpod type bridge
+root@vm1:/home/ubuntu# ip addr add 11.11.11.11/24 dev br-inpod 
+root@vm1:/home/ubuntu# ip link set up dev br-inpod
+root@vm1:/home/ubuntu# ip route show
+default via 10.42.0.1 dev eth0 
+10.42.0.0/24 dev eth0 proto kernel scope link src 10.42.0.27 
+10.42.0.0/16 via 10.42.0.1 dev eth0 
+11.11.11.0/24 dev br-inpod proto kernel scope link src 11.11.11.11 
+root@vm1:/home/ubuntu# 
+
+root@vm1:/home/ubuntu# curl 10.123.123.100
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.0.25 
+ 
+root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11 
+^C
+root@vm1:/home/ubuntu# 
+
+#
+# This breaks -as expected- since there is no route back to 11.11.11.0/24 in the kernel
+#
+
+''' 
+
+We can fix that provided that you have netadmin rights in default network ns - which is very bad  practice - (but that's just a test).
 
 '''
 
+#
+# add route to 
+#
+ubuntu@vm1:~$ kubectl get pods test-pod-vm1 -o wide
+NAME           READY   STATUS    RESTARTS   AGE   IP           NODE   NOMINATED NODE   READINESS GATES
+test-pod-vm1   1/1     Running   0          21h   10.42.0.27   vm1    <none>           <none>
+
+ubuntu@vm1:~$ sudo ip route add 11.11.11.0/24 via 10.42.0.27 
+
+#
+# curl from pod works now
+#
+
+root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11 
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.0.25 
+ 
+root@vm1:/home/ubuntu# 
+'''
