@@ -935,7 +935,8 @@ Chain KUBE-EXT-W47NQ5DDJKUWFTVY (2 references)
 --> 1   120 KUBE-SVC-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* route LOCAL traffic for default/nginx-mlb-l2-service external destinations */ ADDRTYPE match src-type LOCAL
     2   120 KUBE-SVL-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
 ubuntu@vm2:~$  
-'''
+``` 
+
 #### External Routing from within pods
 
 This is where things gets a bit more complicated: assume pod can be used to forward traffic (e.g. the pod terminates a Tunnel like IPSEC). We have sources, which raises concerns on how the trafic is routed back. 
