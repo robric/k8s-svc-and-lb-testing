@@ -1020,7 +1020,7 @@ We can fix that provided that you have netadmin rights in default network ns - w
 ```
 
 #
-# add route to 
+# add route to the pod for the br-inpod subnet
 #
 ubuntu@vm1:~$ kubectl get pods test-pod-vm1 -o wide
 NAME           READY   STATUS    RESTARTS   AGE   IP           NODE   NOMINATED NODE   READINESS GATES
