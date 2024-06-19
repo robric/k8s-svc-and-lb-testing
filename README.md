@@ -941,6 +941,32 @@ ubuntu@vm2:~$
 
 This is where things gets a bit more complicated: assume pod can be used to forward traffic (e.g. the pod terminates a Tunnel like IPSEC). We have sources, which raises concerns on how the trafic is routed back. 
 
+We're using "externalTrafficPolicy: Cluster" which is the default mode. 
+```
++-------------------------+ +----------+ +----------+                                                            
+|                         | |          | |          |                                                            
+|  +-------------------+  | |          | |          |                                                            
+|  |  test-pod-vm1     |  | |          | |          |                                                            
+|  | +--------------+  |  | |          | |          |                                                            
+|  | | br-inpod     |  |  | |          | |          |                                                            
+|  | |11.11.11.11/24|  |  | |          | |          |                                                            
+|  | +--------------+  |  | |          | |          |                                                            
+|  |      eth0         |  | |          | |          |                                                            
+|  +------+---+--------+  | |          | |          |                                                            
+|         |   |           | |          | |          |                                                            
+|         |   |           | |          | |          |                                                            
+|         |   |           | |          | |          |                                                           -
+|         +---+           | |          | |          |                                        -                   
+|                         | |          | |          |                                                            
+|    +----------+         | |+--------+| |+--------+|                                                            
+|    |  nginx1  |         | || nginx2 || || nginx3 ||                                                            
+|    |          |         | ||        || ||        ||      +                                                     
+|    +----------+         | |+--------+| |+--------+|                                                            
+|                         | |          | |          |                                                            
+|                         | |          | |          |                                                            
++-------------------------+ +----------+ +----------+                                                            
+           VM1                  VM2           VM3      
+```
 Spawn netshoot pod on vm1. 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/test-pod-vm1.yaml
