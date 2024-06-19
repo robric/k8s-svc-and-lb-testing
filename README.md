@@ -890,5 +890,51 @@ listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
 
 ``` 
 
-This is due to masquerading (-j MASK) configured in iptables.
+This is due to masquerading (-j MASK) configured in iptables for the EXT rule
+
+```
+#
+#   externalTrafficPolicy: Cluster -------> rule KUBE-MARK-MASQ - which ultimately calls -j MASQ action - is matched (pkts 9)
+#
+
+ubuntu@vm2:~$ sudo iptables -t nat -L KUBE-EXT-W47NQ5DDJKUWFTVY -n -v
+Chain KUBE-EXT-W47NQ5DDJKUWFTVY (2 references)
+ pkts bytes target     prot opt in     out     source               destination         
+--> 9   540 KUBE-MARK-MASQ  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* masquerade traffic for default/nginx-mlb-l2-service external destinations */
+--> 9   540 KUBE-SVC-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+ubuntu@vm2:~$ 
+
+#
+#   externalTrafficPolicy: Local -------> KUBE-SVL-W47NQ5DDJKUWFTVY is called directly without checking KUBE-MARK-MASK 
+#                                         Indeed, there is an extra condition "ADDRTYPE match src-type LOCAL" which 
+#                                         checks whether source is local
+#
+
+ubuntu@vm2:~$ sudo iptables -t nat -L KUBE-EXT-W47NQ5DDJKUWFTVY -n -v
+Chain KUBE-EXT-W47NQ5DDJKUWFTVY (2 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 KUBE-SVC-W47NQ5DDJKUWFTVY  all  --  *      *       10.42.0.0/16         0.0.0.0/0            /* pod traffic for default/nginx-mlb-l2-service external destinations */
+    0     0 KUBE-MARK-MASQ  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* masquerade LOCAL traffic for default/nginx-mlb-l2-service external destinations */ ADDRTYPE match src-type LOCAL
+    0     0 KUBE-SVC-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* route LOCAL traffic for default/nginx-mlb-l2-service external destinations */ ADDRTYPE match src-type LOCAL
+--> 2   120 KUBE-SVL-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0
+
+ubuntu@vm2:~$ 
+
+For fun, we can that if we use an IP that is local to the node (but external to the pod network), then the processing is different (use of masquerade and default cluster-wide KUBE-SVC instead of local KUBE-SVL)
+
+ubuntu@vm2:~$ curl 10.123.123.100 --interface 10.65.94.199
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.42.2.22 
+ 
+ubuntu@vm2:~$ sudo iptables -t nat -L KUBE-EXT-W47NQ5DDJKUWFTVY -n -v
+Chain KUBE-EXT-W47NQ5DDJKUWFTVY (2 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 KUBE-SVC-W47NQ5DDJKUWFTVY  all  --  *      *       10.42.0.0/16         0.0.0.0/0            /* pod traffic for default/nginx-mlb-l2-service external destinations */
+--> 1   120 KUBE-MARK-MASQ  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* masquerade LOCAL traffic for default/nginx-mlb-l2-service external destinations */ ADDRTYPE match src-type LOCAL
+--> 1   120 KUBE-SVC-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* route LOCAL traffic for default/nginx-mlb-l2-service external destinations */ ADDRTYPE match src-type LOCAL
+    2   120 KUBE-SVL-W47NQ5DDJKUWFTVY  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+ubuntu@vm2:~$  
+
+'''
 
