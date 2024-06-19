@@ -856,9 +856,39 @@ ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
 ubuntu@vm1:~$
 ```
 
+#### SNAT enforcement for incoming trafic
 
+There is a subtle behavior change when playing with externalTrafficPolicy related to the enforcment of SNAT:
+- externalTrafficPolicy: Cluster (default)
+SNAT is enforced for incoming trafic. 
+- externalTrafficPolicy: Local 
+SNAT is NOT enforced for incoming trafic.
 
+```console
+ubuntu@vm1:~$ kubectl get pods -o wide | grep vm2
+[...]
+nginx-lbl2-577c9489d-fvk7g             1/1     Running   0          5d20h   10.42.1.21   vm2    <none>           <none>
+ubuntu@vm1:~$ kubectl debug -it nginx-lbl2-577c9489d-fvk7g --image nicolaka/netshoot
+[...]
 
+#
+#   externalTrafficPolicy: Cluster -------> Source address of curl is Natted to  10.42.1.1
+#
 
+ nginx-lbl2-577c9489d-fvk7g  ~  tcpdump -ni eth0
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+09:49:45.535241 IP 10.42.1.1.27659 > 10.42.1.21.8080: Flags [S], seq 568611649, win 64240, options [mss 1460,sackOK,TS val 1343731101 ecr 0,nop,wscale 7], length 0
+09:49:45.535298 IP 10.42.1.21.8080 > 10.42.1.1.27659: Flags [S.], seq 3912071880, ack 568611650, win 64308, options [mss 1410,sackOK,TS val 3484627024 ecr 1343731101,nop,wscale 7], length 0
 
+#
+#   externalTrafficPolicy: Local -------> Source address is Not Natted 10.123.123.100
+#
+
+09:50:54.098279 IP 10.123.123.254.38124 > 10.42.1.21.8080: Flags [S], seq 4011661290, win 64240, options [mss 1460,sackOK,TS val 1343799665 ecr 0,nop,wscale 7], length 0
+09:50:54.098324 IP 10.42.1.21.8080 > 10.123.123.254.38124: Flags [S.], seq 1190145475, ack 4011661291, win 64308, options [mss 1410,sackOK,TS val 3766712946 ecr 1343799665,nop,wscale 7], length 0
+
+``` 
+
+This is due to masquerading (-j MASK) configured in iptables.
 
