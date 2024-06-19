@@ -941,11 +941,11 @@ ubuntu@vm2:~$
 This is where things gets a bit more complicated: assume pod can be used to forward traffic (e.g. the pod terminates a Tunnel like IPSEC). We have sources, which raises concerns on how the trafic is routed back. 
 
 Spawn netshoot pod on vm1. 
-'''
+```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/test-pod-vm1.yaml
-'''
-And add some external address within this pod.
-'''
+```
+And let's add an interface within this pod so we can generate "external request" from this pod to the metalb VIP.
+```
 ubuntu@vm1:~$ kubectl describe pod test-pod-vm1 | grep container
     Container ID:  containerd://87f8f7961ee33c3c2d439621aa88bf4a882ac2538bec7526039a5e21e494ee14
 
@@ -986,11 +986,11 @@ root@vm1:/home/ubuntu#
 # This breaks -as expected- since there is no route back to 11.11.11.0/24 in the kernel
 #
 
-''' 
+```
 
 We can fix that provided that you have netadmin rights in default network ns - which is very bad  practice - (but that's just a test).
 
-'''
+```
 
 #
 # add route to 
@@ -1011,4 +1011,4 @@ root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11
  This is the pod IP address: 10.42.0.25 
  
 root@vm1:/home/ubuntu# 
-'''
+```
