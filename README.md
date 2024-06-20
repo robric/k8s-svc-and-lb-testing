@@ -1,4 +1,4 @@
-# Looking under the hood of k8s service realization on 3-node clusters: clusterIP, nodeport and metallb 
+# Looking under the hood: clusterIP, nodeport and metallb
 
 This page is:
 - a quick copy-paste source for rapidly bringing up test scenarios.
