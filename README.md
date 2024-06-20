@@ -1059,7 +1059,7 @@ kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/m
 
 Now we can test from the host (i.e. external).
 
-```` 
+```
 #
 # That worked !!!
 #
