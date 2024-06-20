@@ -1039,3 +1039,71 @@ root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11
  
 root@vm1:/home/ubuntu# 
 ```
+
+#### metallb compliance with SCTP
+
+Metallb works in conjunction with sctp (after this is a control plane)
+
+First install SCTP tools on each VM and the host (this will take care of drivers and make it easy to test).
+``` 
+multipass exec vm1 -- sudo apt install lksctp-tools -y
+multipass exec vm2 -- sudo apt install lksctp-tools -y
+multipass exec vm3 -- sudo apt install lksctp-tools -y
+sudo apt install lksctp-tools -y
+```
+Then launch the sctp service and deployment.
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc.yaml
+```
+
+Now we can test from the host (i.e. external).
+
+```` 
+#
+# That worked !!!
+#
+root@fiveg-host-24-node4:~# sctp_test -H 10.123.123.254 -h  10.123.123.101 -p 10000 -s
+remote:addr=10.123.123.101, port=webmin, family=2
+local:addr=10.123.123.254, port=0, family=2
+seed = 1718815477
+
+Starting tests...
+        socket(SOCK_SEQPACKET, IPPROTO_SCTP)  ->  sk=3
+        bind(sk=3, [a:10.123.123.254,p:0])  --  attempt 1/10
+Client: Sending packets.(1/10)
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1844700133
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1188217067
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1427423053
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1690014943
+[...]
+
+#
+# 
+#
+```
+
+
+
+### Troubleshooting
+
+Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
+
+```
+ubuntu@vm1:~$ kubectl get pods -o wide -n metallb-system 
+NAME                                      READY   STATUS    RESTARTS   AGE    IP             NODE   NOMINATED NODE   READINESS GATES
+frr-k8s-webhook-server-7d94b7b8d5-8pgd7   1/1     Running   0          7d4h   10.42.1.7      vm2    <none>           <none>
+frr-k8s-daemon-t68fr                      6/6     Running   0          7d4h   10.65.94.199   vm2    <none>           <none>
+controller-5f4fc66d9d-4j4h5               1/1     Running   0          7d4h   10.42.1.8      vm2    <none>           <none>
+frr-k8s-daemon-q695g                      6/6     Running   0          7d4h   10.65.94.238   vm1    <none>           <none>
+speaker-gq27n                             1/1     Running   0          7d4h   10.65.94.238   vm1    <none>           <none>
+speaker-lklxw                             1/1     Running   0          7d4h   10.65.94.199   vm2    <none>           <none>
+frr-k8s-daemon-h7rh6                      6/6     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
+speaker-n9cbf                             1/1     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
+ubuntu@vm1:~$ 
+
+
+```
