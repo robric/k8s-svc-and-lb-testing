@@ -1046,6 +1046,14 @@ Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, whil
 - Two independant deployments mapped to distincts VIPs: vip1 on vm1 and vm2, vip2 on vm3 
 - 
 
+Nodes are labelled based on two distincts zones:  
+```
+kubectl label nodes vm1 fate=1
+kubectl label nodes vm2 fate=1
+kubectl label nodes vm3 fate=2
+``` 
+
+
 
 #### metallb compliance with SCTP
 
