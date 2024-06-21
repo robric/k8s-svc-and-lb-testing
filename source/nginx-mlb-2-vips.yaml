@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-mlb-l2-service
+  name: nginx-mlb-l2-fate1
   annotations:
     metallb.universe.tf/address-pool: external-pool
 spec:
@@ -17,7 +17,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-mlb-l2-service
+  name: nginx-mlb-l2-fate2
   annotations:
     metallb.universe.tf/address-pool: external-pool
 spec:
