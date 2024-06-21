@@ -1040,6 +1040,12 @@ root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11
 root@vm1:/home/ubuntu# 
 ```
 
+### metallb with node affinity
+
+Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, while making sure there is no fate sharing.
+- Two independant deployments mapped to distincts VIPs: vip1 on vm1 and vm2, vip2 on vm3 
+- 
+
 
 #### metallb compliance with SCTP
 
