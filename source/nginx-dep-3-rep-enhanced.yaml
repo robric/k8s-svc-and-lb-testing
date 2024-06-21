@@ -48,16 +48,16 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-enhanced
+  name: nginx-enh
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: nginx-enhanced
+      app: nginx-enh
   template:
     metadata:
       labels:
-        app: nginx-enhanched
+        app: nginx-enh
     spec:
       containers:
       - name: nginx

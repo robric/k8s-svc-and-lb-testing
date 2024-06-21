@@ -1106,5 +1106,12 @@ frr-k8s-daemon-h7rh6                      6/6     Running   0          7d4h   10
 speaker-n9cbf                             1/1     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
 ubuntu@vm1:~$ 
 
+#
+# This is where you see how ARP are generated 
+#
+
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-gq27n  | grep -i arp
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2024-06-12T12:31:56Z"}
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2024-06-12T12:31:56Z"}
 
 ```
