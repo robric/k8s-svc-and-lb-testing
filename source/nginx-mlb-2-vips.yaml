@@ -37,7 +37,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 10.123.123.201/22
+  - 10.123.123.201/32
 ---
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
