@@ -1194,7 +1194,7 @@ kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/m
 
 It actually works as expected. We can achieve non fate-sharing deployments:
 - vip 10.123.123.201 is handled by 52:54:00:e2:c3:ec = vm1 in zone1
-- vip 10.123.123.202 is handled by 52:54:00:db:2b:ce = vm2 in zone2
+- vip 10.123.123.202 is handled by 52:54:00:db:2b:ce = vm3 in zone2
 
 ```console
 root@fiveg-host-24-node4:~# curl 10.123.123.202 ------------> request to VIP zone 2
