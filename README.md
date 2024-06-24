@@ -1051,10 +1051,14 @@ root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11
 root@vm1:/home/ubuntu# 
 ```
 
+
+
 ### metallb with node affinity
 
 Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, while making sure there is no zone sharing.
-- Two independant deployments mapped to distincts VIPs: vip1 on vm1 and vm2, vip2 on vm3 
+- Two zone labels for computes: vm1 and vm2 in zone1 and vm3 in zone2.
+- Two independant deployments nginx-zone1/2 mapped to their respective zone (nodeselector affinity)
+- Two distincts VIPs exposed via metalb: vip1=10.123.123.201 and vip=210.123.123.202, each mapped to distinct zone
 - 
 
 Nodes are labelled based on two distincts zones:  
@@ -1062,9 +1066,140 @@ Nodes are labelled based on two distincts zones:
 kubectl label nodes vm1 zone=zone1
 kubectl label nodes vm2 zone=zone1
 kubectl label nodes vm3 zone=zone2
-``` 
+```
+
+Then apply the manifest:
+
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-2-vips.yaml
+```
+
+For the sake of simplicity here what is defined in service/metalb - only zone1 displayed for simplicity -.
+
+```
+#
+# Define a first service nginx-zone1 with selector nginx-zone1 (app deployment steered to zone1)
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-mlb-l2-zone1
+  annotations:
+    metallb.universe.tf/address-pool: external-pool-zone1
+spec:
+  selector:
+    app: nginx-zone1
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer
+---
 
 
+#
+# Define a pool for zone1 (ipaddresspool) with vip 10.123.123.201
+#
+
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: external-pool-zone1
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.123.123.201/32
+---
+
+#
+# Use an L2advertisement CRD to control the management of the VIP. 
+# This maps with the ip pool for zone1 (external-pool-zone1) together with a nodeselector to zone1.
+#
+
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-metalb-zone1
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - external-pool-zone1
+  interfaces:
+  - ens3.100
+  nodeSelectors:
+  - matchLabels:
+      zone: "zone1"
+```
+
+After configuration, we can see 3 pods, services and deployments mapped to appropriate zones.
+
+```
+ubuntu@vm1:~$ kubectl get pods -o wide | grep zone
+nginx-zone2-7f8b84d998-s4g75           1/1     Running   0          3h2m    10.42.2.36   vm3    <none>           <none>
+nginx-zone1-58ccdbd4b8-p49gv           1/1     Running   0          3h2m    10.42.0.37   vm1    <none>           <none>
+nginx-zone1-58ccdbd4b8-5m5fh           1/1     Running   0          3h2m    10.42.1.35   vm2    <none>           <none>
+ubuntu@vm1:~$ kubectl get svc -o wide | grep zone
+nginx-mlb-l2-zone2     LoadBalancer   10.43.3.184     10.123.123.202   80:31405/TCP   3h3m    app=nginx-zone2
+nginx-mlb-l2-zone1     LoadBalancer   10.43.165.8     10.123.123.201   80:30980/TCP   3h3m    app=nginx-zone1
+ubuntu@vm1:~$ kubectl get deployments.apps -o wide | grep zone
+nginx-zone2           1/1     1            1           3h3m    nginx        nginx:latest   app=nginx-zone2
+nginx-zone1           2/2     2            2           3h3m    nginx        nginx:latest   app=nginx-zone1
+ubuntu@vm1:~$
+```
+
+The requests to each VIPs are properly directed to the correct zone.
+
+```
+root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
+
+ Welcome to NGINX! 
+ Here are the IP address:port tuples for:
+  - nginx server => 10.42.1.35:8080             ------------> vm2 / zone1
+  - http client  => 10.42.0.0:51172 
+
+root@fiveg-host-24-node4:~# curl 10.123.123.202 ------------> request to VIP zone 2
+
+ Welcome to NGINX! 
+ Here are the IP address:port tuples for:
+  - nginx server => 10.42.2.36:8080             ------------> vm3 / zone2
+  - http client  => 10.42.0.0:3152 
+
+root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
+
+ Welcome to NGINX! 
+ Here are the IP address:port tuples for:
+  - nginx server => 10.42.1.35:8080            ------------> vm2 / zone1
+  - http client  => 10.42.0.0:12865 
+
+root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
+
+ Welcome to NGINX! 
+ Here are the IP address:port tuples for:
+  - nginx server => 10.42.0.37:8080            ------------> vm1 / zone1 
+  - http client  => 10.42.0.1:18972 
+
+```
+If we investigate each VIP, we can see that both VIPs are managed by the same host (hence same zone).
+This does not seem correct considering the nodeselector mapping attached to L2advertisement.
+```
+root@fiveg-host-24-node4:~# arp -na | grep 10.123
+? (10.123.123.2) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100
+? (10.123.123.1) at 52:54:00:e2:c3:ec [ether] on mpqemubr0.100
+? (10.123.123.202) at 52:54:00:e2:c3:ec [ether] on mpqemubr0.100
+? (10.123.123.201) at 52:54:00:e2:c3:ec [ether] on mpqemubr0.100
+? (10.123.123.3) at 52:54:00:db:2b:ce [ether] on mpqemubr0.100
+root@fiveg-host-24-node4:~# 
+
+#
+#     We see that 10.123.123.201 and 10.123.123.202 are bound to the same MAC 52:54:00:e2:c3:ec, which is VM1
+#     This does not look right.
+#
+
+```
+Let's see what happens if we update the services with "externaltraficpolicy = local" since landing on vm1 for zone2 would not allow forwarding to vm3 in zone2.
+
+```
+```
 
 #### metallb compliance with SCTP
 
