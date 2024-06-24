@@ -1042,15 +1042,15 @@ root@vm1:/home/ubuntu#
 
 ### metallb with node affinity
 
-Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, while making sure there is no fate sharing.
+Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, while making sure there is no zone sharing.
 - Two independant deployments mapped to distincts VIPs: vip1 on vm1 and vm2, vip2 on vm3 
 - 
 
 Nodes are labelled based on two distincts zones:  
 ```
-kubectl label nodes vm1 fate=1
-kubectl label nodes vm2 fate=1
-kubectl label nodes vm3 fate=2
+kubectl label nodes vm1 zone=zone1
+kubectl label nodes vm2 zone=zone1
+kubectl label nodes vm3 zone=zone2
 ``` 
 
 

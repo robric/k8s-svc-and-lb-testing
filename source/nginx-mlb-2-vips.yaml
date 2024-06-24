@@ -1,48 +1,37 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-mlb-l2-fate1
+  name: nginx-mlb-l2-zone1
   annotations:
-    metallb.universe.tf/address-pool: external-pool-fate1
+    metallb.universe.tf/address-pool: external-pool-zone1
 spec:
   selector:
-    app: nginx-fate1
+    app: nginx-zone1
   ports:
     - protocol: TCP
       port: 80
       targetPort: 8080
   type: LoadBalancer
-  loadBalancerIP: 10.123.123.201
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-mlb-l2-fate2
+  name: nginx-mlb-l2-zone2
   annotations:
-    metallb.universe.tf/address-pool: external-pool-fate2
+    metallb.universe.tf/address-pool: external-pool-zone2
 spec:
   selector:
-    app: nginx-fate2
+    app: nginx-zone2
   ports:
     - protocol: TCP
       port: 80
       targetPort: 8080
   type: LoadBalancer
-  loadBalancerIP: 10.123.123.202
 ---
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: external-pool-fate1
-  namespace: metallb-system
-spec:
-  addresses:
-  - 10.123.123.201/32
----
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: external-pool-fate2
+  name: external-pool-zone2
   namespace: metallb-system
 spec:
   addresses:
@@ -51,26 +40,39 @@ spec:
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
-  name: l2-metalb-fate2
+  name: l2-metalb-zone2
   namespace: metallb-system
 spec:
   ipAddressPools:
-  - external-pool-fate2
+  - external-pool-zone2
+  interfaces:
+  - ens3.100
   nodeSelectors:
   - matchLabels:
-      fate: "2"
+      zone: "zone2"
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: external-pool-zone1
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.123.123.201/32
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
-  name: l2-metalb-fate1
+  name: l2-metalb-zone1
   namespace: metallb-system
 spec:
   ipAddressPools:
-  - external-pool-fate1
+  - external-pool-zone1
+  interfaces:
+  - ens3.100
   nodeSelectors:
   - matchLabels:
-      fate: "1"
+      zone: "zone1"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -123,16 +125,16 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-fate1
+  name: nginx-zone1
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: nginx-fate1
+      app: nginx-zone1
   template:
     metadata:
       labels:
-        app: nginx-fate1
+        app: nginx-zone1
     spec:
       containers:
       - name: nginx
@@ -148,21 +150,21 @@ spec:
         configMap:
           name: nginx-conf-inspect
       nodeSelector:
-        fate: "1"
+        zone: "zone1"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-fate2
+  name: nginx-zone2
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx-fate2
+      app: nginx-zone2
   template:
     metadata:
       labels:
-        app: nginx-fate2
+        app: nginx-zone2
     spec:
       containers:
       - name: nginx
@@ -178,7 +180,7 @@ spec:
         configMap:
           name: nginx-conf-inspect
       nodeSelector:
-        fate: "2"
+        zone: "zone2"
 ---
 
 
