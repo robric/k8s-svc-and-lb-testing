@@ -1057,16 +1057,46 @@ Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, whil
 - Two zone labels for computes: vm1 and vm2 in zone1 and vm3 in zone2.
 - Two independant deployments nginx-zone1/2 mapped to their respective zone (nodeselector affinity)
 - Two distincts VIPs exposed via metalb: vip1=10.123.123.201 and vip=210.123.123.202, each mapped to distinct zone
-- 
 
-Nodes are labelled based on two distincts zones:  
+The following drawing represents the test setup:
+
+```
+                                                 |                                                  
+                                        zone 1   |   zone2                                          
+                                                 |                                                  
+                                                 |                                                  
+           +-----------------+ +----------------+|+----------------+                                
+           |                 | |                |||                |                                
+           |                 | |                |||                |                                
+           |   +----------+  | |   +---------+  |||   +---------+  |                                
+           |   |  nginx1  |  | |   | nginx2  |  |||   | nginx3  |  |                                
+           |   |  zone 1  |  | |   | zone1   |  |||   | zone2   |  |                                
+           |   |          |  | |   |         |  |||   |         |  |                                
+           |   +----------+  | |   +---------+  |||   +---------+  |                                
+           |                 | |                |||                |                                
+           |                 | |                |||                |                                
+           |                 | |                |||                |                                
+           |                 | |                |||                |                                
+           |      zone1      | |    zone1       |||   zone2        |                                
+           |                 | |                |||                |                                
+           |                 | |                |||                |                                
+           |                 | |                |||                |                                
+           |VM1              | |VM2             ||| VM3            |                                
+           +-----------------+ +----------------+|+----------------+                                
+                                                 |                                                  
+                                                 |                                                  
+            <------        VIP1     --------->   | <-   VIP2   ->                                   
+                      10.123.123.201             |  10.123.123.202    
+
+```
+To achieve this, nodes are labelled based on two distincts zones:  
 ```
 kubectl label nodes vm1 zone=zone1
 kubectl label nodes vm2 zone=zone1
 kubectl label nodes vm3 zone=zone2
 ```
 
-Then apply the manifest:
+Apply the manifest for metallb service and app deployments
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-2-vips.yaml
