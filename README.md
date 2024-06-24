@@ -1051,9 +1051,7 @@ root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11
 root@vm1:/home/ubuntu# 
 ```
 
-
-
-### metallb with node affinity
+#### metallb with multiple VIPs and node affinity
 
 Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, while making sure there is no zone sharing.
 - Two zone labels for computes: vm1 and vm2 in zone1 and vm3 in zone2.
@@ -1133,7 +1131,7 @@ spec:
 
 After configuration, we can see 3 pods, services and deployments mapped to appropriate zones.
 
-```
+```console
 ubuntu@vm1:~$ kubectl get pods -o wide | grep zone
 nginx-zone2-7f8b84d998-s4g75           1/1     Running   0          3h2m    10.42.2.36   vm3    <none>           <none>
 nginx-zone1-58ccdbd4b8-p49gv           1/1     Running   0          3h2m    10.42.0.37   vm1    <none>           <none>
@@ -1149,7 +1147,7 @@ ubuntu@vm1:~$
 
 The requests to each VIPs are properly directed to the correct zone.
 
-```
+```console
 root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
 
  Welcome to NGINX! 
@@ -1181,7 +1179,7 @@ root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zon
 ```
 If we investigate each VIP, we can see that both VIPs are managed by the same host (hence same zone).
 This does not seem correct considering the nodeselector mapping attached to L2advertisement.
-```
+```console
 root@fiveg-host-24-node4:~# arp -na | grep 10.123
 ? (10.123.123.2) at 52:54:00:c0:87:a0 [ether] on mpqemubr0.100
 ? (10.123.123.1) at 52:54:00:e2:c3:ec [ether] on mpqemubr0.100
@@ -1191,14 +1189,41 @@ root@fiveg-host-24-node4:~# arp -na | grep 10.123
 root@fiveg-host-24-node4:~# 
 
 #
-#     We see that 10.123.123.201 and 10.123.123.202 are bound to the same MAC 52:54:00:e2:c3:ec, which is VM1
-#     This does not look right.
+#     We see that 10.123.123.201 and 10.123.123.202 are bound to the same MAC 52:54:00:e2:c3:ec,
+#     which is VM1. This does not look right !
 #
 
 ```
-Let's see what happens if we update the services with "externaltraficpolicy = local" since landing on vm1 for zone2 would not allow forwarding to vm3 in zone2.
-
+Let's see what happens if we update the services with "externalTraficPolicy = local" since landing on vm1 for zone2 would not allow forwarding to vm3 in zone2.
 ```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-2-vips-local.yaml
+```
+
+It actually works as expected. We can achieve non fate-sharing deployments:
+- vip 10.123.123.201 is handled by 52:54:00:e2:c3:ec = vm1 in zone1
+- vip 10.123.123.202 is handled by 52:54:00:db:2b:ce = vm2 in zone2
+
+```console
+root@fiveg-host-24-node4:~# curl 10.123.123.202
+
+ Welcome to NGINX! 
+ Here are the IP address:port tuples for:
+  - nginx server => 10.42.2.36:8080 
+  - http client  => 10.123.123.254:44492 
+
+root@fiveg-host-24-node4:~# curl 10.123.123.201
+
+ Welcome to NGINX! 
+ Here are the IP address:port tuples for:
+  - nginx server => 10.42.0.37:8080 
+  - http client  => 10.123.123.254:34188 
+
+root@fiveg-host-24-node4:~# arp -na | grep 10.123
+
+? (10.123.123.202) at 52:54:00:db:2b:ce [ether] on mpqemubr0.100
+? (10.123.123.201) at 52:54:00:e2:c3:ec [ether] on mpqemubr0.100
+root@fiveg-host-24-node4:~# 
+
 ```
 
 #### metallb compliance with SCTP
