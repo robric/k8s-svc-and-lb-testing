@@ -1152,29 +1152,22 @@ root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zon
 
  Welcome to NGINX! 
  Here are the IP address:port tuples for:
-  - nginx server => 10.42.1.35:8080             ------------> vm2 / zone1
+  - nginx server => 10.42.1.35:8080             ------------> pod in vm2 / zone1
   - http client  => 10.42.0.0:51172 
+
+root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
+
+ Welcome to NGINX! 
+ Here are the IP address:port tuples for:
+  - nginx server => 10.42.0.37:8080            ------------> pod in vm1 / zone1 
+  - http client  => 10.42.0.1:18972 
 
 root@fiveg-host-24-node4:~# curl 10.123.123.202 ------------> request to VIP zone 2
 
  Welcome to NGINX! 
  Here are the IP address:port tuples for:
-  - nginx server => 10.42.2.36:8080             ------------> vm3 / zone2
+  - nginx server => 10.42.2.36:8080             ------------> pod in vm3 / zone2
   - http client  => 10.42.0.0:3152 
-
-root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
-
- Welcome to NGINX! 
- Here are the IP address:port tuples for:
-  - nginx server => 10.42.1.35:8080            ------------> vm2 / zone1
-  - http client  => 10.42.0.0:12865 
-
-root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
-
- Welcome to NGINX! 
- Here are the IP address:port tuples for:
-  - nginx server => 10.42.0.37:8080            ------------> vm1 / zone1 
-  - http client  => 10.42.0.1:18972 
 
 ```
 If we investigate each VIP, we can see that both VIPs are managed by the same host (hence same zone).
@@ -1204,18 +1197,18 @@ It actually works as expected. We can achieve non fate-sharing deployments:
 - vip 10.123.123.202 is handled by 52:54:00:db:2b:ce = vm2 in zone2
 
 ```console
-root@fiveg-host-24-node4:~# curl 10.123.123.202
+root@fiveg-host-24-node4:~# curl 10.123.123.202 ------------> request to VIP zone 2
 
  Welcome to NGINX! 
  Here are the IP address:port tuples for:
-  - nginx server => 10.42.2.36:8080 
+  - nginx server => 10.42.2.36:8080            ------------> pod in vm3 / zone2
   - http client  => 10.123.123.254:44492 
 
-root@fiveg-host-24-node4:~# curl 10.123.123.201
+root@fiveg-host-24-node4:~# curl 10.123.123.201 ------------> request to VIP zone 1
 
  Welcome to NGINX! 
  Here are the IP address:port tuples for:
-  - nginx server => 10.42.0.37:8080 
+  - nginx server => 10.42.0.37:8080             ------------> pod in vm1 / zone1
   - http client  => 10.123.123.254:34188 
 
 root@fiveg-host-24-node4:~# arp -na | grep 10.123
