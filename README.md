@@ -610,10 +610,21 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 05:59:14.860278 52:54:00:e4:50:da > 52:54:00:c0:87:a0, ethertype IPv4 (0x0800), length 98: (tos 0x0, ttl 64, id 32968, offset 0, flags [DF], proto ICMP (1), length 84)
     10.123.123.254 > 10.123.123.1: ICMP echo request, id 240, seq 1, length 64
 #
-# We can check that proxy arp is disabled
+# We can check that proxy arp is disabled - the "speaker" pod from metallb is actually the one that is managing ARP. 
 #
 ubuntu@vm2:~$ cat /proc/sys/net/ipv4/conf/ens3.100/proxy_arp
 0
+# 
+# The problem got fixed after changing the mask for the metallb VIP pool. This avoids any overlap with existing IP of VMs. 
+#
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: external-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.123.123.64/24  ==========>  Use 10.123.123.64/26 instead !!!!
 ```
 Here is the bulk of iptables for bookkeeping. Just look at the diagram right after: the lb is basically another branch to the external service associated with the nodeport.
 ```
