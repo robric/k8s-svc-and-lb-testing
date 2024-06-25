@@ -866,6 +866,62 @@ ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
  
 ubuntu@vm1:~$
 ```
+#### metallb deployment in hostnetwork
+
+The following manifest deploys 3 pods in hostnetwork, together with VIP 10.123.123.102 in the external network via metallb.
+
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-svc-hostnetwork.yaml
+```
+This works as expected.
+```
+ubuntu@vm1:~$ kubectl get svc | grep 10.123.123.102
+nginx-mlb-l2-hostnet   LoadBalancer   10.43.207.14    10.123.123.102   80:30733/TCP   6m56s
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ kubectl  get pods -o wide | grep net
+nginx-lbl2-hostnet-6d7754d545-5g8r8    1/1     Running   0          3m22s   10.65.94.95    vm3    <none>           <none>
+nginx-lbl2-hostnet-6d7754d545-59d6g    1/1     Running   0          3m22s   10.65.94.199   vm2    <none>           <none>
+nginx-lbl2-hostnet-6d7754d545-69kxn    1/1     Running   0          3m22s   10.65.94.238   vm1    <none>           <none>
+ubuntu@vm1:~$ 
+root@fiveg-host-24-node4:~# curl 10.123.123.102
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.65.94.95 
+
+root@fiveg-host-24-node4:~# curl 10.123.123.102
+
+ Welcome to NGINX! 
+ This is the pod IP address: 10.65.94.199 
+ 
+root@fiveg-host-24-node4:~# 
+```
+There is not much change in NAT logic compared with 
+```
+ubuntu@vm1:~$ sudo iptables-save |grep 10.123.123.102
+-A KUBE-SERVICES -d 10.123.123.102/32 -p tcp -m comment --comment "default/nginx-mlb-l2-hostnet loadbalancer IP" -m tcp --dport 80 -j KUBE-EXT-CDEB5OJ5KJNVMLM6
+ubuntu@vm1:~$ sudo iptables -t nat -L KUBE-EXT-CDEB5OJ5KJNVMLM6 -n 
+Chain KUBE-EXT-CDEB5OJ5KJNVMLM6 (2 references)
+target     prot opt source               destination         
+KUBE-MARK-MASQ  all  --  0.0.0.0/0            0.0.0.0/0            /* masquerade traffic for default/nginx-mlb-l2-hostnet external destinations */
+KUBE-SVC-CDEB5OJ5KJNVMLM6  all  --  0.0.0.0/0            0.0.0.0/0           
+ubuntu@vm1:~$ sudo iptables -t nat -L KUBE-SVC-CDEB5OJ5KJNVMLM6 -n 
+Chain KUBE-SVC-CDEB5OJ5KJNVMLM6 (2 references)
+target     prot opt source               destination         
+KUBE-MARK-MASQ  tcp  -- !10.42.0.0/16         10.43.207.14         /* default/nginx-mlb-l2-hostnet cluster IP */ tcp dpt:80
+KUBE-SEP-BRCASNC5D2TNKFYB  all  --  0.0.0.0/0            0.0.0.0/0            /* default/nginx-mlb-l2-hostnet -> 10.65.94.199:8080 */ statistic mode random probability 0.33333333349
+KUBE-SEP-7VFNSJIQ2K6SELCJ  all  --  0.0.0.0/0            0.0.0.0/0            /* default/nginx-mlb-l2-hostnet -> 10.65.94.238:8080 */ statistic mode random probability 0.50000000000
+KUBE-SEP-DYIL5FTYGTTVEK47  all  --  0.0.0.0/0            0.0.0.0/0            /* default/nginx-mlb-l2-hostnet -> 10.65.94.95:8080 */
+ubuntu@vm1:~$ sudo iptables -t nat -L KUBE-SEP-BRCASNC5D2TNKFYB  -n 
+Chain KUBE-SEP-BRCASNC5D2TNKFYB (1 references)
+target     prot opt source               destination         
+KUBE-MARK-MASQ  all  --  10.65.94.199         0.0.0.0/0            /* default/nginx-mlb-l2-hostnet */
+DNAT       tcp  --  0.0.0.0/0            0.0.0.0/0            /* default/nginx-mlb-l2-hostnet */ tcp to:10.65.94.199:8080
+ubuntu@vm1:~$ 
+```
+
+The change is related to KUBE-SEP instantiation with DNAT happens to node:8080 address instead of pod:8080. 
+This is business as usual.
+
 
 #### Source NAT (masquerade) enforcement for incoming trafic
 
