@@ -919,7 +919,7 @@ DNAT       tcp  --  0.0.0.0/0            0.0.0.0/0            /* default/nginx-m
 ubuntu@vm1:~$ 
 ```
 
-The change is related to KUBE-SEP instantiation with DNAT happens to node:8080 address instead of pod:8080. 
+The change is related to KUBE-SEP instantiation with DNAT happens to node:8080 address -which is actually the pod address in the case of hostnetwork-. 
 This is business as usual.
 
 
