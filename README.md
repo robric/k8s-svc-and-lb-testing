@@ -1051,7 +1051,7 @@ root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11
 root@vm1:/home/ubuntu# 
 ```
 
-#### metallb with multiple VIPs and node affinity
+#### Non fate-sharing deployment with metallb and  multiple VIPs
 
 Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, while making sure there is no zone sharing.
 - Two zone labels for computes: vm1 and vm2 in zone1 and vm3 in zone2.
