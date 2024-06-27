@@ -1396,6 +1396,7 @@ ubuntu@vm3:~$ sudo conntrack -E -p sctp
 
 Let's inspect if sessions are load balanced.
 For this purpose, we run a loop of 1000 sctp tests. For some reason, we get only 977 entries in conntrack... no big deal, that's good enough to do some stats.
+
 From the external server (fiveg-host-24-node4): 
 ``` 
 for ((i = 1; i <= 1000; i++)); do     sctp_test -H 10.123.123.254 -h 10.123.123.101 -p 10000 -s -x 1; done
