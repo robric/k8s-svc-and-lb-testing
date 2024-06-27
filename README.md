@@ -1351,6 +1351,50 @@ Client: Sending packets.(1/10)
 #
 ```
 
+We can use conntrack command to inspect sctp translations / events, while running multiple sctp connection test (previous command).
+
+```
+#
+# First you need to understand which VM is carrying the VIP. This is where nat is enforced.
+#
+
+root@fiveg-host-24-node4:~# arp -na | grep 123.101
+? (10.123.123.101) at 52:54:00:db:2b:ce [ether] on mpqemubr0.100
+root@fiveg-host-24-node4:~# arp -na | grep  52:54:00:db:2b:ce
+? (10.65.94.95) at 52:54:00:db:2b:ce [ether] on mpqemubr0
+? (10.123.123.101) at 52:54:00:db:2b:ce [ether] on mpqemubr0.100
+? (10.123.123.202) at 52:54:00:db:2b:ce [ether] on mpqemubr0.100
+? (10.123.123.3) at 52:54:00:db:2b:ce [ether] on mpqemubr0.100 <--------- This VM3 !
+root@fiveg-host-24-node4:~# 
+
+#
+# Let's inspect what is happening at vm3  
+#
+
+ubuntu@vm3:~$ sudo apt install conntrack
+Reading package lists... Done
+Building dependency tree... Done
+[...]
+ubuntu@vm3:~$ sudo conntrack -L -p sctp
+sctp     132 6 CLOSED src=10.123.123.254 dst=10.123.123.101 sport=38211 dport=10000 src=10.42.2.37 dst=10.42.2.1 sport=9999 dport=1387 [ASSURED] mark=0 use=1
+conntrack v1.4.6 (conntrack-tools): 1 flow entries have been shown.
+ubuntu@vm3:~$ 
+ubuntu@vm3:~$ sudo conntrack -E -p sctp
+    [NEW] sctp     132 10 CLOSED src=10.123.123.254 dst=10.123.123.101 sport=49035 dport=10000 [UNREPLIED] src=10.42.1.36 dst=10.42.2.0 sport=9999 dport=36208
+ [UPDATE] sctp     132 3 COOKIE_WAIT src=10.123.123.254 dst=10.123.123.101 sport=49035 dport=10000 src=10.42.1.36 dst=10.42.2.0 sport=9999 dport=36208
+ [UPDATE] sctp     132 3 COOKIE_ECHOED src=10.123.123.254 dst=10.123.123.101 sport=49035 dport=10000 src=10.42.1.36 dst=10.42.2.0 sport=9999 dport=36208
+ [UPDATE] sctp     132 210 ESTABLISHED src=10.123.123.254 dst=10.123.123.101 sport=49035 dport=10000 src=10.42.1.36 dst=10.42.2.0 sport=9999 dport=36208 [ASSURED]
+ [UPDATE] sctp     132 3 SHUTDOWN_SENT src=10.123.123.254 dst=10.123.123.101 sport=49035 dport=10000 src=10.42.1.36 dst=10.42.2.0 sport=9999 dport=36208 [ASSURED]
+ [UPDATE] sctp     132 3 SHUTDOWN_ACK_SENT src=10.123.123.254 dst=10.123.123.101 sport=49035 dport=10000 src=10.42.1.36 dst=10.42.2.0 sport=9999 dport=36208 [ASSURED]
+ [UPDATE] sctp     132 10 CLOSED src=10.123.123.254 dst=10.123.123.101 sport=49035 dport=10000 src=10.42.1.36 dst=10.42.2.0 sport=9999 dport=36208 [ASSURED]
+....
+
+#
+# We can see that sctp relies on random ports.  The load balancing seems not so a
+#
+```
+
+Load balancing may not be optimal, based on testings (capture a bit long)... I would like to try ipvs mode, but it looks like it is a complex change in k3s :-(
 
 
 ### Troubleshooting
