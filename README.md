@@ -1390,11 +1390,42 @@ ubuntu@vm3:~$ sudo conntrack -E -p sctp
 ....
 
 #
-# We can see that sctp relies on random ports.  The load balancing seems not so a
+# We can see that sctp relies on random ports.
 #
 ```
 
-Load balancing may not be optimal, based on testings (capture a bit long)... I would like to try ipvs mode, but it looks like it is a complex change in k3s :-(
+Let's inspect if sessions are load balanced.
+For this purpose, we run a loop of 1000 sctp tests. For some reason, we get only 977 entries in conntrack... no big deal, that's good enough to do some stats.
+From the external server (fiveg-host-24-node4): 
+``` 
+for ((i = 1; i <= 1000; i++)); do     sctp_test -H 10.123.123.254 -h 10.123.123.101 -p 10000 -s -x 1; done
+```
+Trace new entries (NEW status) on vm3 (=VIP owner) and count for each pod. The file is actually in the log folder of this repo. 
+```
+ubuntu@vm3:~$ sudo conntrack -E -p sctp -e new > test-1000-sessions.log
+ubuntu@vm3:~$
+
+#
+# A rapid inspect of the file shows 3 pods IPs: 10.42.1.36, 10.42.2.37 and 10.42.0.38
+#
+
+#
+# We can simply count each entry to check how load balancing worked.
+#
+ubuntu@vm3:~$ cat test-1000-sessions.log | wc
+    977   13678  155189
+ubuntu@vm3:~$ cat test-1000-sessions.log | grep 10.42.2.37 |  wc
+    316    4424   50194
+ubuntu@vm3:~$ cat test-1000-sessions.log | grep 10.42.0.38 |  wc
+    338    4732   53696
+ubuntu@vm3:~$ cat test-1000-sessions.log | grep 10.42.1.36 |  wc
+    323    4522   51299
+ubuntu@vm3:~$
+
+```
+
+CONCLUSION: *We're getting decent statistical distribution of the session on all pods.* . It seems we're not using ipvs (looks like a complex change in k3s unfortunately :-(), since ipvs can do round robin. 
+
 
 
 ### Troubleshooting
