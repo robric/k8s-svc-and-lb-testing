@@ -45,6 +45,7 @@ spec:
         - |
           apk add --no-cache strongswan openssl
           rm -rf /var/cache/apk/*
+          echo "done with install ..."
         volumeMounts:
         - name: strongswan-bin
           mountPath: /usr/sbin
