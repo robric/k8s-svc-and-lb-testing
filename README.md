@@ -1359,6 +1359,7 @@ First install SCTP tools on each VM and the host (this will take care of drivers
 multipass exec vm1 -- sudo apt install lksctp-tools -y
 multipass exec vm2 -- sudo apt install lksctp-tools -y
 multipass exec vm3 -- sudo apt install lksctp-tools -y
+multipass exec vm-ext -- sudo apt install lksctp-tools -y
 sudo apt install lksctp-tools -y
 ```
 Then launch the sctp service and deployment.
