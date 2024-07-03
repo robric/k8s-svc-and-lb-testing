@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: sctp-server-ipsec
+  name: sctp-server-vip1234
   annotations:
     metallb.universe.tf/address-pool: sctp-external-pool
 spec:
   selector:
-    app: sctp-server-vip1234
+    app: sctp-server-ipsec
   ports:
   - protocol: SCTP
     port: 10000
