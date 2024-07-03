@@ -143,10 +143,12 @@ spec:
   selector: 
     app: strongswan
   ports:
-  - protocol: UDP
+  - name: vpn-isakmp
+    protocol: UDP
     port: 500
     targetPort: 500
-  - protocol: UDP
+  - name: vpn-ike-esp-nat-t
+    protocol: UDP
     port: 4500
     targetPort: 4500
   type: LoadBalancer
