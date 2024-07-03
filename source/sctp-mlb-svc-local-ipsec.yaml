@@ -1,18 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sctp-server
+  annotations:
+    metallb.universe.tf/address-pool: external-pool
+spec:
+  selector:
+    app: sctp-server-ipsec
+  ports:
+  - protocol: SCTP
+    port: 10000
+    targetPort: 9999
+  type: LoadBalancer
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sctp-server
+  name: sctp-server-ipsec
   labels:
-    app: sctp-server
+    app: sctp-server-ipsec
 spec:
   replicas: 6
   selector:
     matchLabels:
-      app: sctp-server
+      app: sctp-server-ipsec
   template:
     metadata:
       labels:
-        app: sctp-server
+        app: sctp-server-ipsec
     spec:
       containers:
       - name: sctp-server
@@ -23,12 +38,6 @@ spec:
           protocol: SCTP
 ---
 apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: l2-metalb
-  namespace: metallb-system
----
-apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
   name: sctp-external-pool
@@ -37,18 +46,13 @@ spec:
   addresses:
   - 1.2.3.4/32
 ---
-apiVersion: v1
-kind: Service
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
 metadata:
-  name: sctp-server-local-vip1234
-  annotations:
-    metallb.universe.tf/address-pool: sctp-external-pool
+  name: l2-metalb-sctp-ipsec
+  namespace: metallb-system
 spec:
-  selector:
-    app: sctp-server
-  externalTrafficPolicy: Local
-  ports:
-  - protocol: SCTP
-    port: 10000
-    targetPort: 9999
-  type: LoadBalancer
+  ipAddressPools:
+  - sctp-external-pool
+---
+
