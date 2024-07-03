@@ -1428,6 +1428,24 @@ ubuntu@vm3:~$
 CONCLUSION: *We're getting decent statistical distribution of the session on all pods.* . It seems we're not using ipvs (looks like a complex change in k3s unfortunately :-(), since ipvs can do round robin. 
 
 
+#### metallb with IPSEC (strongswan) and SCTP
+
+Here we're testing a more complex where:
+- A VIP exposes an external IP for IPSEC termination
+- A VIP exposes an external IP for SCTP termination. The SCTP traffic is encrypted via IPSEC in tunnel mode.
+
+The IPSEC is managed by strongswan running in hostnetwork, where tunnel are terminated. This approach simplifies the routing/ipsec policies (xfrm) back to the remote subnets.
+
+The pod logic is as follow:
+- A single replica (statetulset) is created for IPSEC management.
+- Multiple replicas are deployed for the SCTP servers (6 in total with 2 per servers). 
+
+We're also creating an additional VM to act as a remote client for SCTP over IPSEC.
+
+```
+
+```
+
 
 ### Troubleshooting
 

@@ -1,32 +1,52 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: strongswan-config
-  namespace: default
+  name: ipsec-config
 data:
-  ipsec.conf: |
+  ipsec.conf: |-
     config setup
-      charondebug="ike 2, knl 2, cfg 2"
+        charondebug="ike 2, knl 2, cfg 2"
 
     conn mytunnel
-      authby=secret
-      left=%defaultroute
-      leftid=@myhost
-      leftsubnet=0.0.0.0/0
-      right=192.168.10.201
-      rightid=@myserver
-      rightsubnet=192.168.10.201/32
-      auto=start
-  ipsec.secrets: |
-    : PSK "testing123"
+        authby=secret
+        left=%defaultroute
+        leftid=@myserver
+        leftsubnet=0.0.0.0/0
+        right=%any
+        rightid=%any
+        rightsubnet=0.0.0.0/0
+        auto=start
+  ipsec.secrets: |-
+    @myserver @myclient : PSK "verysecure"
+  strongswan.conf: |-
+    charon {
+      install_routes = no
+      send_vendor_id = yes
+      dns1 = 8.8.8.8
+      dns2 = 8.8.4.4
+      plugins {
+        eap-dynamic {
+          preferred = mschapv2, tls, md5
+        }
+        dhcp {
+          identity_lease = yes
+        }
+      }
+      filelog {
+        stderr {
+          #default = 3
+          flush_line = yes
+        }
+      }
+    }
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: strongswan-deployment
-  namespace: default
 spec:
   replicas: 1
+  serviceName: vpn
   selector:
     matchLabels:
       app: strongswan
@@ -36,48 +56,42 @@ spec:
         app: strongswan
     spec:
       hostNetwork: true
-      initContainers:
-      - name: build-strongswan
-        image: alpine:edge
-        command:
-        - sh
-        - -c
-        - |
-          apk add --no-cache strongswan openssl
-          rm -rf /var/cache/apk/*
-          echo "done with install ..."
-        volumeMounts:
-        - name: strongswan-bin
-          mountPath: /usr/sbin
-        - name: strongswan-lib
-          mountPath: /usr/lib
       containers:
       - name: strongswan
+        image: ubuntu:latest
+        command: ["/bin/sh"]
+        args: ["-c", "apt-get update && apt-get install -y strongswan && tail -f /dev/null"]
         securityContext:
-          capabilities:
-            add:
-            - NET_ADMIN
-        image: alpine:edge
-        command: ["/usr/sbin/ipsec"]
-        args: ["start", "--nofork"]
-        volumeMounts:
-        - name: strongswan-bin
-          mountPath: /usr/sbin
-        - name: strongswan-lib
-          mountPath: /usr/lib
-        - name: strongswan-config
-          mountPath: /etc
+          privileged: true
+          runAsUser: 0
+          runAsGroup: 0
         ports:
-        - containerPort: 500
-          protocol: UDP
-        - containerPort: 4500
-          protocol: UDP
+          - containerPort: 500
+            name: vpn-isakmp
+            protocol: UDP
+          - containerPort: 4500
+            name: vpn-ike
+            protocol: UDP
+        volumeMounts:
+        - mountPath: /etc/ipsec.conf
+          name: config
+          subPath: ipsec.conf
+        - mountPath: /etc/ipsec.secrets
+          name: config
+          subPath: ipsec.secrets
+        - mountPath: /etc/strongswan.conf
+          name: config
+          subPath: strongswan.conf
       volumes:
-      - name: strongswan-bin
-        emptyDir: {}
-      - name: strongswan-lib
-        emptyDir: {}
-      - name: strongswan-config
-        configMap:
-          name: strongswan-config
+      - configMap:
+          items:
+          - key: strongswan.conf
+            path: strongswan.conf
+          - key: ipsec.conf
+            path: ipsec.conf
+          - key: ipsec.secrets
+            path: ipsec.secrets
+          name: ipsec-config
+        name: config
+      restartPolicy: Always
 
