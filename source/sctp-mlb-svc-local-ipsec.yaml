@@ -46,6 +46,7 @@ metadata:
 spec:
   selector:
     app: sctp-server
+  externalTrafficPolicy: Local
   ports:
   - protocol: SCTP
     port: 10000
