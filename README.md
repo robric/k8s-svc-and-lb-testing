@@ -13,26 +13,74 @@ I just start with an ubuntu server with:
 
 ## VM and Cluster deployment 
 
-Just run the following command.
+The testings are based on a deployment of 4 VMs via multipass and additional networking.
+- 1 Cluster made up of 3 vms (k3s).
+- 1 external VM to run testings to reach the cluster in load balancer services.
+
+The below diagram captures the main of characteristics of the lab topology.
+
+```
+Networks:
+- native multipass on bridge mpqemubr0 10.65.94.0/24
+- external network on vlan 100 (10.123.123.0/24). This is for the testings of
+Load Balancers services.
+
+Kubernetes Cluster VM:
+- vm1: master/worker - External IP address = 10.123.123.1/24
+- vm2: worker - External IP address = 10.123.123.2/24
+- vm3: worker - External IP address = 10.123.123.3/24
+
+External VM: 
+- vm-ext: External IP address = 10.123.123.4/24
+
+            +----------------------------------------------+    
+            |                   Cluster                    |    
+            |                                              |     
+            |    MASTER                                    |
+            |      +                                       |   External VM
+            |     worker          worker        worker     |         
+            | +------------+ +------------+ +------------+ | +------------+  
+            | |     vm1    | |    vm2     | |    vm3     | | |     vm-ext |   
+            | +----ens3----+ +---ens3-----+ +---ens3-----+ | +----ens3----+  
+            |      :  |.1/24      :  |.2/24      :  |.3/24 |       :  |.4/24   
+            +------:--|-----------:--|-----------:--|------+       :  |
+                   :  |           :  |           :  |              :  |         
+                   :  |           :  |           :  |              :  |    
+                   :  |           :  |           :  |              :  |    
+                   :  +=========vlan +100 (external)+=================+    
+                   :              10.123.123.0/24:  |              :
+                   :              :              :  |              :   
+                   :              :              :  |              : 
+                   :              :              :  |              : 
+                   :              :              :  |              :                      
+             ------+------ native +vlan(internal)+-----------------+               
+                        :         10.65.94.0/24     |   
+                        :                           |
+                        :                           |
+                 [mpqemubr0]                  [mpqemubr0.100]                         
+                 10.65.94.1/24               10.123.123.254/24                          
+                     host                          host
+```
+To deploy this, just run the following command. It will deploy the network plumbing and vms.
 ```
 curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/deploy.sh | sh
 ```
-We'll get 3 VMs with kubernetes running (k3s inside)
+You'll get the 4 VMs with kubernetes running (k3s inside)
 ```console
 root@fiveg-host-24-node4:~# multipass list 
 Name                    State             IPv4             Image
-test-metalbv2           Running           10.65.94.106     Ubuntu 20.04 LTS
+vm-ext                  Running           10.65.94.56      Ubuntu 22.04 LTS
+                                          10.123.123.4
+vm1                     Running           10.65.94.121     Ubuntu 22.04 LTS
                                           10.42.0.0
                                           10.42.0.1
-vm1                     Running           10.65.94.238     Ubuntu 22.04 LTS
-                                          10.42.0.0
-                                          10.42.0.1
-vm2                     Running           10.65.94.199     Ubuntu 22.04 LTS
+                                          10.123.123.1
+vm2                     Running           10.65.94.22      Ubuntu 22.04 LTS
                                           10.42.1.0
-                                          10.42.1.1
-vm3                     Running           10.65.94.95      Ubuntu 22.04 LTS
+                                          10.123.123.2
+vm3                     Running           10.65.94.156     Ubuntu 22.04 LTS
                                           10.42.2.0
-                                          10.42.2.1
+                                          10.123.123.3
 root@fiveg-host-24-node4:~# multipass shell vm1
 [...]
 Last login: Tue Jun 11 01:57:04 2024 from 10.65.94.1
@@ -472,7 +520,7 @@ ubuntu@vm2:~$
 
 ### Target Design
 
-We're now adding an external interface to the current networking thanks to a vlan (vlan 100).
+We're now using the external interface to the current networking thanks to a vlan (vlan 100).
 
 ```
             +----------------------------------------------+    
@@ -498,8 +546,7 @@ We're now adding an external interface to the current networking thanks to a vla
                  [mpqemubr0]
                  10.65.94.1/24
 ```
-On the host where VM are executed, execute the following script:
-
+This should be there after deployment, but in case this has been lost (reboot), you may execute the following script:
 ```
 curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/external-net.sh | sh
 ```
@@ -565,7 +612,7 @@ ubuntu@vm1:~$
 We can notice that this an extension of nodeport (a random 30329 port is chosen), the latter being an extension of cluster IP.
 We can issue a few request, both from:
 - vm1 (the master/worker node)
-- An external endpoint such as the host (here fiveg-host-24-node4).
+- An external endpoint such as vm-ext or the host.
 ```console
 ubuntu@vm1:~$ curl 10.123.123.100
 
@@ -577,9 +624,7 @@ ubuntu@vm1:~$ curl 10.123.123.100
  Welcome to NGINX! 
  This is the pod IP address: 10.42.0.25 
  
-ubuntu@vm1:~$ 
- 
-root@fiveg-host-24-node4:~# curl 10.123.123.100
+ubuntu@vm-ext:~# curl 10.123.123.100
 
  Welcome to NGINX! 
  This is the pod IP address: 10.42.1.20 
