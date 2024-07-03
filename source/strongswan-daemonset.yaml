@@ -132,4 +132,43 @@ spec:
           name: ipsec-config
         name: config
       restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ipsec-vip
+  annotations:
+    metallb.universe.tf/address-pool: ipsec-external-pool
+spec:
+  selector: 
+    app: strongswan
+  ports:
+  - protocol: udp
+    port: 500
+    targetPort: 500
+  - protocol: udp
+    port: 4500
+    targetPort: 4500
+  type: LoadBalancer
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ipsec-external-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 1.2.3.4/32
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-metalb-ipsec
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - ipsec-external-pool
+---
+
+
 
