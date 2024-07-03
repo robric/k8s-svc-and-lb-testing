@@ -91,7 +91,13 @@ spec:
       - name: strongswan
         image: ubuntu:latest
         command: ["/bin/sh"]
-        args: ["-c", "apt-get update && apt-get install -y strongswan && cp /etc/ipsec.conf-tmp /etc/ipsec.conf && cp /etc/ipsec.secrets-tmp /etc/ipsec.secrets && ipsec start && tail -f /dev/null"]
+        args: ["-c", "apt-get update && \
+         apt-get install -y strongswan && \
+         cp /etc/ipsec.conf-tmp /etc/ipsec.conf && \
+         cp /etc/ipsec.secrets-tmp /etc/ipsec.secrets && \
+         cp /etc/strongswan.conf-tmp /etc/strongswan.conf && \
+         ipsec start && \
+         tail -f /dev/null"]
         securityContext:
           privileged: true
           runAsUser: 0
@@ -110,6 +116,9 @@ spec:
         - mountPath: /etc/ipsec.secrets-tmp
           name: config
           subPath: ipsec.secrets
+        - mountPath: /etc/strongswan.conf-tmp
+          name: config
+          subPath: strongswan.conf
         env:
           - name: DEBIAN_FRONTEND
             value: noninteractive
