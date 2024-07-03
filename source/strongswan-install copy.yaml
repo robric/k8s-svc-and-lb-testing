@@ -129,6 +129,8 @@ spec:
             path: ipsec.conf
           - key: ipsec.secrets
             path: ipsec.secrets
+          - key: strongswan.conf
+            path: strongswan.conf
           name: ipsec-config
         name: config
       restartPolicy: Always
