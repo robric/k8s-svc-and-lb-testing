@@ -6,7 +6,7 @@ metadata:
     metallb.universe.tf/address-pool: sctp-external-pool
 spec:
   selector:
-    app: sctp-server-ipsec
+    app: sctp-server-vip1234
   ports:
   - protocol: SCTP
     port: 10000
