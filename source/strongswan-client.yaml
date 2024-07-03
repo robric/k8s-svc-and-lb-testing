@@ -10,11 +10,11 @@ data:
     conn mytunnel
         authby=secret
         left=%defaultroute
-        leftid=@myserver
+        leftid=@myclient
         leftsubnet=0.0.0.0/0
-        right=%any
-        rightid=%any
-        rightsubnet=0.0.0.0/0
+        right=10.123.123.200
+        rightid=@myserver
+        rightsubnet=1.2.3.4/32   
         auto=start
   ipsec.secrets: |-
     @myserver @myclient : PSK "verysecure"
