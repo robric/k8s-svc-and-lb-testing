@@ -1487,14 +1487,14 @@ The pod logic is as follow:
 
 We're also creating an additional VM to act as a remote client for SCTP over IPSEC.
 
-Launch the sctp service and deployment and the IPSEC daemonset.
+In the Kubernetes Cluster, launch the sctp service and deployment and the IPSEC daemonset.
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-local-ipsec.yaml
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
 ```
-
+In the test VM, deploy the IPSEC client. 
 ```
-
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
 ```
 
 
