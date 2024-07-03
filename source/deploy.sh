@@ -59,6 +59,7 @@ echo "Adding external VM for testings..."
 
 multipass launch --name "vm-ext" --mem 2G --disk 30G --cpus 1 jammy --cloud-init cloud-init.yaml
 multipass exec vm-ext -- sudo apt install lksctp-tools -y
+multipass exec vm-ext -- bash -c 'curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" sh -'
 
 # adding external network to the cluster
 

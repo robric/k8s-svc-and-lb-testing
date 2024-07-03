@@ -1362,14 +1362,9 @@ multipass exec vm3 -- sudo apt install lksctp-tools -y
 multipass exec vm-ext -- sudo apt install lksctp-tools -y
 sudo apt install lksctp-tools -y
 ```
-Then launch the sctp service and deployment and the IPSEC daemonset.
+Then launch the deployment of the sctp service and load balancer (VIP 10.123.123.101 port 10000).
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc.yaml
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
-```
-
-```
-
 ```
 Now we can test from the host (i.e. external).
 
@@ -1491,6 +1486,12 @@ The pod logic is as follow:
 - Multiple replicas are deployed for the SCTP servers (6 in total with 2 per servers). 
 
 We're also creating an additional VM to act as a remote client for SCTP over IPSEC.
+
+Launch the sctp service and deployment and the IPSEC daemonset.
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-local-ipsec.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
+```
 
 ```
 
