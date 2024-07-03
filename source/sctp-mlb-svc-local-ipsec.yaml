@@ -40,7 +40,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sctp-server
+  name: sctp-server-local-vip1234
   annotations:
     metallb.universe.tf/address-pool: sctp-external-pool
 spec:
