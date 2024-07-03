@@ -72,12 +72,10 @@ data:
       }
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: DaemonSet
 metadata:
-  name: ipsec
+  name: ipsec-ds
 spec:
-  replicas: 1
-  serviceName: vpn
   selector:
     matchLabels:
       app: strongswan

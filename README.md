@@ -1362,7 +1362,7 @@ multipass exec vm3 -- sudo apt install lksctp-tools -y
 multipass exec vm-ext -- sudo apt install lksctp-tools -y
 sudo apt install lksctp-tools -y
 ```
-Then launch the sctp service and deployment.
+Then launch the sctp service and deployment and the IPSEC daemonset.
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc.yaml
 ```
