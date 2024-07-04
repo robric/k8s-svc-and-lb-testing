@@ -9,7 +9,7 @@ data:
 
     conn mytunnel
         authby=secret
-        left=%defaultroute
+        left=10.123.123.4
         leftid=@myclient
         leftsubnet=0.0.0.0/0
         right=10.123.123.200
