@@ -1492,11 +1492,102 @@ In the Kubernetes Cluster (vm1), launch the sctp service and deployment and the 
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-local-ipsec.yaml
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
 ```
-In the test VM (vm-ext), deploy the IPSEC client:
+We'll get two Metallb services:
+- ipsec-vip with a virtual IP 10.123.123.200 in the external LAN  10.123.123.0/24. This service must be configured with   "externalTrafficPolicy: Local" to prevent any load balancing in IPSEC, which results in inconsistent synchronization between IPSEC  control and data plane. 
+- sctp-server-vip1234 with a VIP 1.2.3.4/32. This VIP is somehow internal to the host and attached to no LAN since it is reachable via IPSEC. Depending on the requirements, this service can be configured with externalTrafficPolicy set to "Local or Cluster".
+
+Additionally we get:
+- 3 pods for IPSEC control plane (actually daemonset running on each server).  
+- 6 pods for SCTP server (2 on each server)
+
+```
+ubuntu@vm1:~$ kubectl get svc -o wide
+NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                        AGE   SELECTOR
+ipsec-vip             LoadBalancer   10.43.149.137   10.123.123.200   500:31815/UDP,4500:30285/UDP   23h   app=strongswan
+kubernetes            ClusterIP      10.43.0.1       <none>           443/TCP                        27h   <none>
+sctp-server-vip1234   LoadBalancer   10.43.113.18    1.2.3.4          10000:30452/SCTP               24h   app=sctp-server-ipsec
+ubuntu@vm1:~$ kubectl  get pods  -o wide
+NAME                                 READY   STATUS    RESTARTS   AGE     IP             NODE   NOMINATED NODE   READINESS GATES
+ipsec-ds-5lvxc                       1/1     Running   0          4h42m   10.65.94.22    vm2    <none>           <none>
+ipsec-ds-qf8r8                       1/1     Running   0          4h42m   10.65.94.156   vm3    <none>           <none>
+ipsec-ds-ql2nz                       1/1     Running   0          4h42m   10.65.94.121   vm1    <none>           <none>
+sctp-server-ipsec-78c66f958b-blghs   1/1     Running   0          24h     10.42.2.27     vm3    <none>           <none>
+sctp-server-ipsec-78c66f958b-h44pk   1/1     Running   0          24h     10.42.0.32     vm1    <none>           <none>
+sctp-server-ipsec-78c66f958b-pmp4h   1/1     Running   0          24h     10.42.1.28     vm2    <none>           <none>
+sctp-server-ipsec-78c66f958b-qs26h   1/1     Running   0          24h     10.42.1.27     vm2    <none>           <none>
+sctp-server-ipsec-78c66f958b-rttf9   1/1     Running   0          24h     10.42.2.28     vm3    <none>           <none>
+sctp-server-ipsec-78c66f958b-xhksm   1/1     Running   0          24h     10.42.0.33     vm1    <none>           <none>
+
+```
+To test connectivity of IPSEC/SCTP, use the VM (vm-ext). It will deploy an IPSEC client:
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
 ```
+Next just test
+```
+#
+# SCTP is reaching the VIP 1.2.3.4 (sctp-server-vip1234)
+#
+ubuntu@vm-ext:~$ sctp_test -H 10.65.94.56  -h 1.2.3.4 -p 10000 -s | head -20
+remote:addr=1.2.3.4, port=webmin, family=2
+local:addr=10.65.94.56, port=0, family=2
+seed = 1720114773
 
+Starting tests...
+        socket(SOCK_SEQPACKET, IPPROTO_SCTP)  ->  sk=3
+        bind(sk=3, [a:10.65.94.56,p:0])  --  attempt 1/10
+Client: Sending packets.(1/10)
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=391217600
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=394027420
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1937662216
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=28161918
+        sendmsg(sk=3, assoc=0)    1 bytes.
+[...]
+
+#
+# When running multiple trials, we can see that trafic if sent to any pod the cluster.
+# 
+
+# 1/ Find which server owns the VIP 10.123.123.200 by inspecting mac address:
+
+ubuntu@vm-ext:~$ arp -na | grep 123.200
+? (10.123.123.200) at 52:54:00:fd:51:52 [ether] on ens3.100
+ubuntu@vm-ext:~$ arp -na | grep 52:54:00:fd:51:52
+? (10.123.123.200) at 52:54:00:fd:51:52 [ether] on ens3.100
+? (10.123.123.1) at 52:54:00:fd:51:52 [ether] on ens3.100  <----- That's vm1
+
+#
+# 2/ Connect to vm1 and run conntrack (sudo apt install conntrack) to inspect NAT contexts and check the src 
+# of returning traffic (10.42.x.y)
+#
+
+#
+# This is the result externalTrafficPolicy: Cluster
+#
+
+ubuntu@vm1:~$ sudo conntrack -E -p sctp -e NEW
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=47863 dport=10000 [UNREPLIED] src=10.42.2.28 dst=10.42.0.0 sport=9999 dport=33605
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=40922 dport=10000 [UNREPLIED] src=10.42.2.27 dst=10.42.0.0 sport=9999 dport=7013
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=48727 dport=10000 [UNREPLIED] src=10.42.1.28 dst=10.42.0.0 sport=9999 dport=11151
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=55181 dport=10000 [UNREPLIED] src=10.42.2.28 dst=10.42.0.0 sport=9999 dport=40994
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=36567 dport=10000 [UNREPLIED] src=10.42.2.27 dst=10.42.0.0 sport=9999 dport=9928
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=38517 dport=10000 [UNREPLIED] src=10.42.1.27 dst=10.42.0.0 sport=9999 dport=6328
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=57154 dport=10000 [UNREPLIED] src=10.42.0.33 dst=10.42.0.1 sport=9999 dport=14361
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=57154 dport=10000 [UNREPLIED] src=10.42.0.32 dst=10.42.0.1 sport=9999 dport=35436
+    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=57154 dport=10000 [UNREPLIED] src=10.42.1.27 dst=10.42.0.0 sport=9999 dport=29375
+
+# ============> This is all good !
+
+#
+# This is the result externalTrafficPolicy: Local
+#
+
+
+```
 
 ### Troubleshooting
 
