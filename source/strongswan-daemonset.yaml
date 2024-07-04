@@ -141,7 +141,7 @@ metadata:
   annotations:
     metallb.universe.tf/address-pool: ipsec-external-pool
 spec:
-  externalTrafficPolicy: Cluster
+  externalTrafficPolicy: Local
   selector: 
     app: strongswan
   ports:
