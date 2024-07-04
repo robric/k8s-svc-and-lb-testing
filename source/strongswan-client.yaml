@@ -6,7 +6,6 @@ data:
   ipsec.conf: |-
     config setup
         charondebug="ike 2, knl 2, cfg 2"
-
     conn mytunnel
         authby=secret
         left=10.123.123.4
