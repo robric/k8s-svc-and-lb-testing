@@ -5,7 +5,7 @@ metadata:
   annotations:
     metallb.universe.tf/address-pool: sctp-external-pool
 spec:
-  externalTrafficPolicy: Local
+  externalTrafficPolicy: Cluster
   selector:
     app: sctp-server-ipsec
   ports:

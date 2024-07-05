@@ -1475,7 +1475,7 @@ CONCLUSION: *We're getting decent statistical distribution of the session on all
 
 #### metallb with IPSEC (strongswan) and SCTP
 
-Here we're testing a more complex where:
+In this section, we're testing a more complex integration with dual Metallb services:
 - A VIP exposes an external IP for IPSEC termination
 - A VIP exposes an external IP for SCTP termination. The SCTP traffic is encrypted via IPSEC in tunnel mode.
 
