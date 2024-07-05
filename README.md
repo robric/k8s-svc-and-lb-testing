@@ -1718,7 +1718,16 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 
 #
 # It looks like NAT is not properly enforced.
-# Let's just try to 
+# Let's just try to "hack and see" 
+#
+
+ubuntu@vm1:~$ sudo sysctl -w net.bridge.bridge-nf-call-iptables=0
+net.bridge.bridge-nf-call-iptables = 0
+ubuntu@vm1:~$ 
+===> no luck
+
+#
+#
 #
 
 ```
