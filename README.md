@@ -1479,26 +1479,64 @@ Here we're testing a more complex where:
 - A VIP exposes an external IP for IPSEC termination
 - A VIP exposes an external IP for SCTP termination. The SCTP traffic is encrypted via IPSEC in tunnel mode.
 
-The IPSEC is managed by strongswan running in hostnetwork, where tunnel are terminated. This approach simplifies the routing/ipsec policies (xfrm) back to the remote subnets.
+The IPSEC is managed by strongswan running in hostnetwork, where tunnel are terminated. This approach simplifies the routing/ipsec policies (ip xfrm policy) back to the remote subnets.
 
 The pod logic is as follow:
-- A single replica (statetulset) is created for IPSEC management.
-- Multiple replicas are deployed for the SCTP servers (6 in total with 2 per servers). 
+- 3 pods for IPSEC control plane (actually daemonset running on each server)
+- 6 pods for the SCTP servers so we can (2 per servers for testing ExternalTrafficPolicy: Local) 
 
-We're also creating an additional VM to act as a remote client for SCTP over IPSEC.
+The external VM (vm-ext) is a remote client for SCTP over IPSEC.
+
+We'll get two Metallb services:
+- ipsec-vip with a virtual IP 10.123.123.200 in the external LAN  10.123.123.0/24. This service must be configured with   "externalTrafficPolicy: Local" to prevent any load balancing in IPSEC, which results in inconsistent synchronization between IPSEC  control and data plane. 
+- sctp-server-vip1234 with a VIP 1.2.3.4/32. This VIP is somehow internal to the host and attached to no LAN since it is reachable via IPSEC. Depending on the requirements, this service can be configured with externalTrafficPolicy set to "Local or Cluster".
+
+The following diagram summarizes this setup:
+
+```                                          
+         vm1                   vm2                   vm3          
++-------------------+ +-------------------+ +-------------------+ 
+|                   | |                   | |                   | 
+| +------+ +------+ | | +------+ +------+ | | +------+ +------+ | 
+| | sctp | | sctp | | | | sctp | | sctp | | | | sctp | | sctp | | 
+| | pod1 | | pod2 | | | | pod3 | | pod4 | | | | pod5 | | pod6 | | 
+| +------+ +------+ | | +------+ +------+ | | +------+ +------+ | 
+|    +-----------------------------------------------------+    | 
+|    |                   SCTP VIP 1.2.3.4                  |    | 
+|    +-----------------------------------------------------+    | 
+|                   | |                   | |                   | 
++---------|---------+ +----------|--------+ +---------|---------+ 
+  ens3.100|.1            ens3.100|            ens3.100|           
+          |                      |                    |           
+          |                      |                    |           
+     +----------------------------------------------------+       
+     |               IPSEC VIP 10.123.123.200             |       
+     +----------------------------------------------------+       
+          |                      |                    |           
+          ---------------------------------------------           
+                        vlan external network                     
+                           10.123.123.0/24                        
+                                 |                                
+                                 |.4                              
+                +---------------------------------+               
+                |                                 |               
+                |  SCTP over IPSEC:               |               
+                |                                 |               
+                |  SCTP SRC=5.6.7.8/32            |               
+                |  SCTP DEST=1.2.3.4/32           |               
+                |                                 |               
+                |  IPSEC SRC=10.123.123.4         |               
+                |  IPSEC DEST=10.123.123.200      |               
+                |                                 |               
+                +---------------------------------+               
+                              vm-ext                                                                                                                   
+```
 
 In the Kubernetes Cluster (vm1), launch the sctp service and deployment and the IPSEC daemonset:
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-local-ipsec.yaml
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
 ```
-We'll get two Metallb services:
-- ipsec-vip with a virtual IP 10.123.123.200 in the external LAN  10.123.123.0/24. This service must be configured with   "externalTrafficPolicy: Local" to prevent any load balancing in IPSEC, which results in inconsistent synchronization between IPSEC  control and data plane. 
-- sctp-server-vip1234 with a VIP 1.2.3.4/32. This VIP is somehow internal to the host and attached to no LAN since it is reachable via IPSEC. Depending on the requirements, this service can be configured with externalTrafficPolicy set to "Local or Cluster".
-
-Additionally we get:
-- 3 pods for IPSEC control plane (actually daemonset running on each server).  
-- 6 pods for SCTP server (2 on each server)
 
 ```
 ubuntu@vm1:~$ kubectl get svc -o wide
