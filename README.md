@@ -1579,8 +1579,10 @@ Next let's test it:
 #
 
 #
-# SCTP works, reaching the VIP 1.2.3.4 (sctp-server-vip1234) !!
+# SCTP -partially- works, reaching the VIP 1.2.3.4 (sctp-server-vip1234) 
+# However, there are some issues since return trafic to local pods is lost
 #
+
 ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s 
 remote:addr=1.2.3.4, port=webmin, family=2
 local:addr=5.6.7.8, port=0, family=2
@@ -1642,7 +1644,10 @@ ubuntu@vm1:~$ sudo conntrack -E -p sctp -e NEW
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=38233 dport=10000 [UNREPLIED] src=10.42.0.38 dst=10.42.0.1 sport=9999 dport=12800
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=38233 dport=10000 [UNREPLIED] src=10.42.1.34 dst=10.42.0.0 sport=9999 dport=39258
 
+#
 # ============> this seems to work, however some calls a bit unresponsive (calls to pods in vm1, where IPSEC is terminated).
+#
+#
 
 ```
 Now let's toggle externalTrafficPolicy to "Local" (kubectl edit ...):
@@ -1651,9 +1656,77 @@ Now let's toggle externalTrafficPolicy to "Local" (kubectl edit ...):
 # This is the result externalTrafficPolicy: Local
 #
 
+#
+# It does not work at all !!!
+# 
 
+ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s
+remote:addr=1.2.3.4, port=webmin, family=2
+local:addr=5.6.7.8, port=0, family=2
+seed = 1720195042
+
+Starting tests...
+        socket(SOCK_SEQPACKET, IPPROTO_SCTP)  ->  sk=3
+        bind(sk=3, [a:5.6.7.8,p:0])  --  attempt 1/10
+Client: Sending packets.(1/10)
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=2055574450
+^C
+ubuntu@vm-ext:~$ 
+
+#
+# NAT context are toward local pods (.40 and .41 in this trial):
+#
+ubuntu@vm1:~$ sudo conntrack -E -p sctp -e NEW
+[NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=51396 dport=10000 [UNREPLIED] src=10.42.0.40 dst=5.6.7.8 sport=9999 dport=51396
+[NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=51396 dport=10000 [UNREPLIED] src=10.42.0.41 dst=5.6.7.8 sport=9999 dport=51396
+[NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=51396 dport=10000 [UNREPLIED] src=10.42.0.41 dst=5.6.7.8 sport=9999 dport=51396
+
+Check pods .40 and .41.
+ubuntu@vm1:~$ kubectl  get pods -o wide |grep vm1
+[...]
+sctp-server-ipsec-78c66f958b-2w62z   1/1     Running   0          28m    10.42.0.41     vm1    <none>           <none>
+sctp-server-ipsec-78c66f958b-cwsf5   1/1     Running   0          28m    10.42.0.40     vm1    <none>           <none>
+ubuntu@vm1:~$ 
+
+#
+# If we inspect at cni0 interface (flannel) where pods are living we see
+# that SCTP responses are sent back [INIT ACK].
+# 
+
+ubuntu@vm1:~$ sudo tcpdump -vni cni0 "sctp"
+tcpdump: listening on cni0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+09:01:15.457601 IP (tos 0x2,ECT(0), ttl 63, id 0, offset 0, flags [DF], proto SCTP (132), length 68)
+    5.6.7.8.46020 > 10.42.0.40.9999: sctp (1) [INIT] [init tag: 2450773484] [rwnd: 106496] [OS: 10] [MIS: 65535] [init TSN: 1691014945] 
+09:01:15.457960 IP (tos 0x2,ECT(0), ttl 64, id 0, offset 0, flags [DF], proto SCTP (132), length 292)
+    10.42.0.40.9999 > 5.6.7.8.46020: sctp (1) [INIT ACK] [init tag: 2794367529] [rwnd: 106496] [OS: 10] [MIS: 10] [init TSN: 3101944263] 
+09:01:18.522178 IP (tos 0x2,ECT(0), ttl 63, id 0, offset 0, flags [DF], proto SCTP (132), length 68)
+ [...]
+
+#
+# But packets never reach properly the ens3.100 interface as if the IPSEC policy was ignored. 
+# Only [INIT] packets - two attemps here - 
+#
+
+ubuntu@vm1:~$ sudo tcpdump -evni ens3.100 "sctp"
+tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+09:03:23.888239 52:54:00:96:9d:ef > 52:54:00:fd:51:52, ethertype IPv4 (0x0800), length 82: (tos 0x2,ECT(0), ttl 64, id 0, offset 0, flags [DF], proto SCTP (132), length 68)
+    5.6.7.8.46020 > 1.2.3.4.10000: sctp (1) [INIT] [init tag: 2714382025] [rwnd: 106496] [OS: 10] [MIS: 65535] [init TSN: 3715017747] 
+09:03:27.033937 52:54:00:96:9d:ef > 52:54:00:fd:51:52, ethertype IPv4 (0x0800), length 82: (tos 0x2,ECT(0), ttl 64, id 0, offset 0, flags [DF], proto SCTP (132), length 68)
+    5.6.7.8.57282 > 1.2.3.4.10000: sctp (1) [INIT] [init tag: 2714382025] [rwnd: 106496] [OS: 10] [MIS: 65535] [init TSN: 3715017747] 
+
+
+#
+# It looks like NAT is not properly enforced.
+# Let's just try to 
+#
 
 ```
+
+Deployment in Hostnetwork.
+
+If we deploy sctp server pods in the hostnetwork things just work.
+
 
 
 
