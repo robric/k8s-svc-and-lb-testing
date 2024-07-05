@@ -968,13 +968,15 @@ The change is related to KUBE-SEP instantiation with DNAT happens to node:8080 a
 This is business as usual.
 
 
-#### Source NAT (masquerade) enforcement for incoming trafic
+#### Source NAT (masquerade) enforcement for incoming trafic in default mode
 
 There is a subtle behavior change when playing with externalTrafficPolicy related to the enforcment of SNAT:
 - externalTrafficPolicy: Cluster (default)
-Source NAT is enforced for incoming trafic from external sources 
+Source NAT is enforced for incoming trafic from external sources. This configuration permits return trafic to be tromboned via the server -identified by SRC NAT IP address- that handles the VIP.   
 - externalTrafficPolicy: Local 
-Source NAT is NOT enforced for incoming trafic from external sources
+Source NAT is NOT enforced for incoming trafic from external sources. In this case, since the server is the same there is no need for NAT.
+
+(NOTE): This change of behavior is actually important since more complex integration work/won't work (see section [Metallb with IPSEC and SCTP](#Metallb-with-ipsec-strongswan-and-sctp))
 
 ```console
 ubuntu@vm1:~$ kubectl get pods -o wide | grep vm2
@@ -1350,7 +1352,7 @@ root@fiveg-host-24-node4:~#
 
 ```
 
-#### metallb compliance with SCTP
+#### Metallb compliance with SCTP
 
 Metallb works in conjunction with sctp (after this is a control plane)
 
@@ -1473,7 +1475,7 @@ ubuntu@vm3:~$
 CONCLUSION: *We're getting decent statistical distribution of the session on all pods.* . It seems we're not using ipvs (looks like a complex change in k3s unfortunately :-(), since ipvs can do round robin. 
 
 
-#### metallb with IPSEC (strongswan) and SCTP
+#### Metallb with IPSEC (strongswan) and SCTP
 
 In this section, we're testing a more complex integration with dual Metallb services:
 - A VIP exposes an external IP for IPSEC termination
