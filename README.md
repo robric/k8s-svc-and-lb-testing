@@ -1487,13 +1487,14 @@ The pod logic is as follow:
 
 The external VM (vm-ext) is a remote client for SCTP over IPSEC.
 
-We'll get two Metallb services:
+This logic is implemented thanks to two Metallb services:
 - ipsec-vip with a virtual IP 10.123.123.200 in the external LAN  10.123.123.0/24. This service must be configured with   "externalTrafficPolicy: Local" to prevent any load balancing in IPSEC, which results in inconsistent synchronization between IPSEC  control and data plane. 
 - sctp-server-vip1234 with a VIP 1.2.3.4/32. This VIP is somehow internal to the host and attached to no LAN since it is reachable via IPSEC. Depending on the requirements, this service can be configured with externalTrafficPolicy set to "Local or Cluster".
 
 The following diagram summarizes this setup:
 
 ```                                          
+                                                                  
          vm1                   vm2                   vm3          
 +-------------------+ +-------------------+ +-------------------+ 
 |                   | |                   | |                   | 
@@ -1505,6 +1506,10 @@ The following diagram summarizes this setup:
 |    |                   SCTP VIP 1.2.3.4                  |    | 
 |    +-----------------------------------------------------+    | 
 |                   | |                   | |                   | 
+|  +-------------+  | |  +-------------+  | |  +-------------+  | 
+|  |  ipsec ds   |  | |  |  ipsec ds   |  | |  |  ipsec ds   |  | 
+|  | hostnetwork |  | |  | hostnetwork |  | |  | hostnetwork |  | 
+|  +-------------+  | |  +-------------+  | |  +-------------+  | 
 +---------|---------+ +----------|--------+ +---------|---------+ 
   ens3.100|.1            ens3.100|            ens3.100|           
           |                      |                    |           
@@ -1529,7 +1534,8 @@ The following diagram summarizes this setup:
                 |  IPSEC DEST=10.123.123.200      |               
                 |                                 |               
                 +---------------------------------+               
-                              vm-ext                                                                                                                   
+                              vm-ext                              
+                                                         
 ```
 
 In the Kubernetes Cluster (vm1), launch the sctp service and deployment and the IPSEC daemonset:
