@@ -1546,53 +1546,64 @@ kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/m
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
 ```
 
+Here is what we get:
+
 ```
 ubuntu@vm1:~$ kubectl get svc -o wide
 NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                        AGE   SELECTOR
-ipsec-vip             LoadBalancer   10.43.149.137   10.123.123.200   500:31815/UDP,4500:30285/UDP   23h   app=strongswan
-kubernetes            ClusterIP      10.43.0.1       <none>           443/TCP                        27h   <none>
-sctp-server-vip1234   LoadBalancer   10.43.113.18    1.2.3.4          10000:30452/SCTP               24h   app=sctp-server-ipsec
-ubuntu@vm1:~$ kubectl  get pods  -o wide
-NAME                                 READY   STATUS    RESTARTS   AGE     IP             NODE   NOMINATED NODE   READINESS GATES
-ipsec-ds-5lvxc                       1/1     Running   0          4h42m   10.65.94.22    vm2    <none>           <none>
-ipsec-ds-qf8r8                       1/1     Running   0          4h42m   10.65.94.156   vm3    <none>           <none>
-ipsec-ds-ql2nz                       1/1     Running   0          4h42m   10.65.94.121   vm1    <none>           <none>
-sctp-server-ipsec-78c66f958b-blghs   1/1     Running   0          24h     10.42.2.27     vm3    <none>           <none>
-sctp-server-ipsec-78c66f958b-h44pk   1/1     Running   0          24h     10.42.0.32     vm1    <none>           <none>
-sctp-server-ipsec-78c66f958b-pmp4h   1/1     Running   0          24h     10.42.1.28     vm2    <none>           <none>
-sctp-server-ipsec-78c66f958b-qs26h   1/1     Running   0          24h     10.42.1.27     vm2    <none>           <none>
-sctp-server-ipsec-78c66f958b-rttf9   1/1     Running   0          24h     10.42.2.28     vm3    <none>           <none>
-sctp-server-ipsec-78c66f958b-xhksm   1/1     Running   0          24h     10.42.0.33     vm1    <none>           <none>
-
+ipsec-vip             LoadBalancer   10.43.149.137   10.123.123.200   500:31815/UDP,4500:30285/UDP   40h   app=strongswan
+kubernetes            ClusterIP      10.43.0.1       <none>           443/TCP                        44h   <none>
+sctp-server-vip1234   LoadBalancer   10.43.212.209   1.2.3.4          10000:30711/SCTP               15h   app=sctp-server-ipsec
+ubuntu@vm1:~$ kubectl get pods -o wide
+NAME                                 READY   STATUS    RESTARTS   AGE   IP             NODE   NOMINATED NODE   READINESS GATES
+ipsec-ds-5lvxc                       1/1     Running   0          21h   10.65.94.22    vm2    <none>           <none>
+ipsec-ds-qf8r8                       1/1     Running   0          21h   10.65.94.156   vm3    <none>           <none>
+ipsec-ds-ql2nz                       1/1     Running   0          21h   10.65.94.121   vm1    <none>           <none>
+sctp-server-ipsec-78c66f958b-4hl9r   1/1     Running   0          15h   10.42.0.38     vm1    <none>           <none>
+sctp-server-ipsec-78c66f958b-92zz9   1/1     Running   0          15h   10.42.1.34     vm2    <none>           <none>
+sctp-server-ipsec-78c66f958b-cjk4k   1/1     Running   0          15h   10.42.2.33     vm3    <none>           <none>
+sctp-server-ipsec-78c66f958b-lppdm   1/1     Running   0          15h   10.42.2.34     vm3    <none>           <none>
+sctp-server-ipsec-78c66f958b-qm2w9   1/1     Running   0          15h   10.42.0.39     vm1    <none>           <none>
+sctp-server-ipsec-78c66f958b-wlwsg   1/1     Running   0          15h   10.42.1.33     vm2    <none>           <none>
+ubuntu@vm1:~$ 
 ```
 To test connectivity of IPSEC/SCTP, use the VM (vm-ext). It will deploy an IPSEC client:
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
 ```
-Next just test
+Next let's test it:
+
 ```
 #
-# SCTP is reaching the VIP 1.2.3.4 (sctp-server-vip1234)
+# This is the result externalTrafficPolicy: Cluster
 #
-ubuntu@vm-ext:~$ sctp_test -H 10.65.94.56  -h 1.2.3.4 -p 10000 -s | head -20
+
+#
+# SCTP works, reaching the VIP 1.2.3.4 (sctp-server-vip1234) !!
+#
+ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s 
 remote:addr=1.2.3.4, port=webmin, family=2
-local:addr=10.65.94.56, port=0, family=2
-seed = 1720114773
+local:addr=5.6.7.8, port=0, family=2
+seed = 1720175250
 
 Starting tests...
         socket(SOCK_SEQPACKET, IPPROTO_SCTP)  ->  sk=3
-        bind(sk=3, [a:10.65.94.56,p:0])  --  attempt 1/10
+        bind(sk=3, [a:5.6.7.8,p:0])  --  attempt 1/10
 Client: Sending packets.(1/10)
         sendmsg(sk=3, assoc=0)    1 bytes.
-          SNDRCV(stream=0 flags=0x1 ppid=391217600
+          SNDRCV(stream=0 flags=0x1 ppid=880700277
         sendmsg(sk=3, assoc=0)    1 bytes.
-          SNDRCV(stream=0 flags=0x1 ppid=394027420
+          SNDRCV(stream=0 flags=0x1 ppid=1633539134
         sendmsg(sk=3, assoc=0)    1 bytes.
-          SNDRCV(stream=0 flags=0x1 ppid=1937662216
+          SNDRCV(stream=0 flags=0x1 ppid=1373293174
         sendmsg(sk=3, assoc=0)    1 bytes.
-          SNDRCV(stream=0 flags=0x1 ppid=28161918
+          SNDRCV(stream=0 flags=0x1 ppid=410525908
         sendmsg(sk=3, assoc=0)    1 bytes.
-[...]
+          SNDRCV(stream=0 flags=0x1 ppid=682680410
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1349506881
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=871858936
 
 #
 # When running multiple trials, we can see that trafic if sent to any pod the cluster.
@@ -1616,24 +1627,35 @@ ubuntu@vm-ext:~$ arp -na | grep 52:54:00:fd:51:52
 #
 
 ubuntu@vm1:~$ sudo conntrack -E -p sctp -e NEW
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=47863 dport=10000 [UNREPLIED] src=10.42.2.28 dst=10.42.0.0 sport=9999 dport=33605
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=40922 dport=10000 [UNREPLIED] src=10.42.2.27 dst=10.42.0.0 sport=9999 dport=7013
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=48727 dport=10000 [UNREPLIED] src=10.42.1.28 dst=10.42.0.0 sport=9999 dport=11151
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=55181 dport=10000 [UNREPLIED] src=10.42.2.28 dst=10.42.0.0 sport=9999 dport=40994
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=36567 dport=10000 [UNREPLIED] src=10.42.2.27 dst=10.42.0.0 sport=9999 dport=9928
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=38517 dport=10000 [UNREPLIED] src=10.42.1.27 dst=10.42.0.0 sport=9999 dport=6328
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=57154 dport=10000 [UNREPLIED] src=10.42.0.33 dst=10.42.0.1 sport=9999 dport=14361
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=57154 dport=10000 [UNREPLIED] src=10.42.0.32 dst=10.42.0.1 sport=9999 dport=35436
-    [NEW] sctp     132 10 CLOSED src=10.65.94.56 dst=1.2.3.4 sport=57154 dport=10000 [UNREPLIED] src=10.42.1.27 dst=10.42.0.0 sport=9999 dport=29375
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=34322 dport=10000 [UNREPLIED] src=10.42.2.34 dst=10.42.0.0 sport=9999 dport=28758
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=34863 dport=10000 [UNREPLIED] src=10.42.0.39 dst=10.42.0.1 sport=9999 dport=24858
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=34863 dport=10000 [UNREPLIED] src=10.42.2.33 dst=10.42.0.0 sport=9999 dport=16351
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=58650 dport=10000 [UNREPLIED] src=10.42.1.34 dst=10.42.0.0 sport=9999 dport=27008
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=58028 dport=10000 [UNREPLIED] src=10.42.0.39 dst=10.42.0.1 sport=9999 dport=32527
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=58028 dport=10000 [UNREPLIED] src=10.42.1.34 dst=10.42.0.0 sport=9999 dport=14823
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=44320 dport=10000 [UNREPLIED] src=10.42.1.34 dst=10.42.0.0 sport=9999 dport=31059
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=53050 dport=10000 [UNREPLIED] src=10.42.0.39 dst=10.42.0.1 sport=9999 dport=33676
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=53050 dport=10000 [UNREPLIED] src=10.42.2.34 dst=10.42.0.0 sport=9999 dport=17806
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=49258 dport=10000 [UNREPLIED] src=10.42.2.34 dst=10.42.0.0 sport=9999 dport=44852
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=51474 dport=10000 [UNREPLIED] src=10.42.2.34 dst=10.42.0.0 sport=9999 dport=39112
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=32998 dport=10000 [UNREPLIED] src=10.42.2.33 dst=10.42.0.0 sport=9999 dport=38159
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=38233 dport=10000 [UNREPLIED] src=10.42.0.38 dst=10.42.0.1 sport=9999 dport=12800
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=38233 dport=10000 [UNREPLIED] src=10.42.1.34 dst=10.42.0.0 sport=9999 dport=39258
 
-# ============> This is all good !
+# ============> this seems to work, however some calls a bit unresponsive (calls to pods in vm1, where IPSEC is terminated).
 
+```
+Now let's toggle externalTrafficPolicy to "Local" (kubectl edit ...):
+```
 #
 # This is the result externalTrafficPolicy: Local
 #
 
 
+
 ```
+
+
 
 ### Troubleshooting
 

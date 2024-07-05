@@ -60,6 +60,21 @@ echo "Adding external VM for testings..."
 multipass launch --name "vm-ext" --mem 2G --disk 30G --cpus 1 jammy --cloud-init cloud-init.yaml
 multipass exec vm-ext -- sudo apt install lksctp-tools -y
 multipass exec vm-ext -- bash -c 'curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" sh -'
+multipass exec vm-ext -- sudo ip addr add 5.6.7.8/32 dev lo
+
+echo "Defining aliases for quick access to vm (connvm1, connvm2, connvm3, connvm-ext)..."
+
+# Aliases
+alias1='alias connvm1="ssh ubuntu@10.123.123.1 -i .ssh/id_rsa"'
+alias2='alias connvm2="ssh ubuntu@10.123.123.2 -i .ssh/id_rsa"'
+alias3='alias connvm3="ssh ubuntu@10.123.123.3 -i .ssh/id_rsa"'
+alias4='alias connvm4="ssh ubuntu@10.123.123.4 -i .ssh/id_rsa"'
+
+# Check and add alias to .bashrc if not already present
+grep -qxF "$alias1" ~/.bashrc || echo "$alias1" >> ~/.bashrc
+grep -qxF "$alias2" ~/.bashrc || echo "$alias2" >> ~/.bashrc
+grep -qxF "$alias3" ~/.bashrc || echo "$alias3" >> ~/.bashrc
+grep -qxF "$alias4" ~/.bashrc || echo "$alias4" >> ~/.bashrc
 
 # adding external network to the cluster
 
