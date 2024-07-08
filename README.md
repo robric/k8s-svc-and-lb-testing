@@ -1571,7 +1571,7 @@ To test connectivity of IPSEC/SCTP, use the VM (vm-ext). It will deploy an IPSEC
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
 ```
-Next let's test it:
+Next let's test it [RESULT = FAILED]:
 
 ```
 #
@@ -1580,7 +1580,7 @@ Next let's test it:
 
 #
 # SCTP -partially- works, reaching the VIP 1.2.3.4 (sctp-server-vip1234) 
-# However, there are some issues since return trafic to local pods is lost
+# However, there are some issues since return trafic to local pods is lost !!!! 
 #
 
 ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s 
