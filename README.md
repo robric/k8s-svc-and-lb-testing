@@ -1738,7 +1738,6 @@ If we deploy sctp server pods in the hostnetwork things just work.
 
 
 
-
 ### Troubleshooting
 
 Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
