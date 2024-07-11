@@ -5,16 +5,16 @@ metadata:
 data:
   swanctl.conf: |-
     connections {
-      gw-gw {
-        local_addrs  = %defaultroute
+      tunnel-accept-any {
+        local_addrs  = %any
         remote_addrs = %any
         local {
           auth = psk
-          id = @myserver
+          id = myserver
         }
         remote {
           auth = psk
-          id = @myclient
+          id = myclient
         }
         children {
           net-net {
@@ -33,12 +33,12 @@ data:
     }
     secrets {
       ike-1 {
-        id-1 = @myserver
-        id-2 = @myclient
+        id-1 = myserver
+        id-2 = myclient
         secret = "verysecure"
       }
     }
-    
+
   strongswan.conf: |-
     charon {
       install_routes = no
@@ -113,9 +113,12 @@ spec:
         command: ["/bin/sh"]
         args: ["-c", "apt-get update && \
          apt-get install -y strongswan && \
+         apt-get install -y strongswan-swanctl && \
          cp /etc/swanctl/swanctl.conf-tmp /etc/swanctl/swanctl.conf && \
          cp /etc/strongswan.conf-tmp /etc/strongswan.conf && \
          ipsec start && \
+         sleep 5 && \
+         swanctl --load-all && \
          tail -f /dev/null"]
         securityContext:
           privileged: true
