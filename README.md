@@ -1477,6 +1477,8 @@ CONCLUSION: *We're getting decent statistical distribution of the session on all
 
 #### Metallb with IPSEC (strongswan) and SCTP
 
+##### Test Setup Installation
+
 In this section, we're testing a more complex integration with dual Metallb services:
 - A VIP exposes an external IP for IPSEC termination
 - A VIP exposes an external IP for SCTP termination. The SCTP traffic is encrypted via IPSEC in tunnel mode.
@@ -1485,7 +1487,7 @@ The IPSEC is managed by strongswan running in hostnetwork, where tunnel are term
 
 The pod logic is as follow:
 - 3 pods for IPSEC control plane (actually daemonset running on each server)
-- 6 pods for the SCTP servers so we can (2 per servers for testing ExternalTrafficPolicy: Local) 
+- 6 pods for the SCTP servers so we can test local LB (2 per servers for testing ExternalTrafficPolicy: Local) 
 
 The external VM (vm-ext) is a remote client for SCTP over IPSEC.
 
@@ -1542,7 +1544,7 @@ The following diagram summarizes this setup:
 
 In the Kubernetes Cluster (vm1), launch the sctp service and deployment and the IPSEC daemonset:
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-local-ipsec.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-vip1234.yaml
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
 ```
 
@@ -1567,11 +1569,17 @@ sctp-server-ipsec-78c66f958b-qm2w9   1/1     Running   0          15h   10.42.0.
 sctp-server-ipsec-78c66f958b-wlwsg   1/1     Running   0          15h   10.42.1.33     vm2    <none>           <none>
 ubuntu@vm1:~$ 
 ```
-To test connectivity of IPSEC/SCTP, use the VM (vm-ext). It will deploy an IPSEC client:
+
+##### Test Setup Installation
+
+To test connectivity of IPSEC/SCTP, use the VM (vm-ext) with the following manifest (it will deploy an IPSEC client with tunnel destination=10.123.123.200 -IPSEC VIP- and SA 5.6.7.-1.2.3.4):
+
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
 ```
-Next let's test it [RESULT = FAILED]:
+##### Test IPSEC-SCTP-1: externalTrafficPolicy: Cluster
+
+Although, things seems to work, since the client ultimately get an answer thanks to restransmissions, we're actually having packet drops: **[RESULT = FAILED]**:
 
 ```
 #
@@ -1579,7 +1587,7 @@ Next let's test it [RESULT = FAILED]:
 #
 
 #
-# SCTP -partially- works, reaching the VIP 1.2.3.4 (sctp-server-vip1234) 
+# SCTP is actually broken, reaching the VIP 1.2.3.4 (sctp-server-vip1234) 
 # However, there are some issues since return trafic to local pods is lost !!!! 
 #
 
@@ -1606,7 +1614,7 @@ Client: Sending packets.(1/10)
           SNDRCV(stream=0 flags=0x1 ppid=1349506881
         sendmsg(sk=3, assoc=0)    1 bytes.
           SNDRCV(stream=0 flags=0x1 ppid=871858936
-
+[...] 
 #
 # When running multiple trials, we can see that trafic if sent to any pod the cluster.
 # 
@@ -1644,20 +1652,24 @@ ubuntu@vm1:~$ sudo conntrack -E -p sctp -e NEW
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=38233 dport=10000 [UNREPLIED] src=10.42.0.38 dst=10.42.0.1 sport=9999 dport=12800
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=38233 dport=10000 [UNREPLIED] src=10.42.1.34 dst=10.42.0.0 sport=9999 dport=39258
 
-#
-# ============> this seems to work, however some calls a bit unresponsive (calls to pods in vm1, where IPSEC is terminated).
-#
-#
+```
+After investigations, we can see that
+- E/W packets from vm1 to vm2/vm3 pods are OK
+- local packets to VM1 pods are KO (dropped).
+
+##### Test IPSEC-SCTP-2: externalTrafficPolicy: Local
+
+Now let's toggle externalTrafficPolicy to "Local" (kubectl edit ...). As we can expect from the previous test, all packets are dropped.
 
 ```
-Now let's toggle externalTrafficPolicy to "Local" (kubectl edit ...):
-```
 #
-# This is the result externalTrafficPolicy: Local
+# Use Kubectl edit svc sctp-server-vip1234 to toggle  
+#  externalTrafficPolicy: Cluster -> Local
 #
 
+
 #
-# It does not work at all !!!
+#        RESULT ==== It does not work at all !!!
 # 
 
 ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s
@@ -1673,6 +1685,9 @@ Client: Sending packets.(1/10)
           SNDRCV(stream=0 flags=0x1 ppid=2055574450
 ^C
 ubuntu@vm-ext:~$ 
+#
+#[...] NO RESPONSE
+#
 
 #
 # NAT context are toward local pods (.40 and .41 in this trial):
@@ -1717,7 +1732,8 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 
 
 #
-# It looks like NAT is not properly enforced.
+# It looks like we're having some conflicts between IPSEC policies and Netfilter.
+#
 # Let's just try to "hack and see" 
 #
 
@@ -1731,10 +1747,12 @@ ubuntu@vm1:~$
 #
 
 ```
+##### Test IPSEC-SCTP-3: use of Hostnetwork (externalTrafficPolicy: Local)
+
+If we deploy sctp server pods in the hostnetwork, we're having a much simpler datapath with no interaction with the CNI.
 
 Deployment in Hostnetwork.
 
-If we deploy sctp server pods in the hostnetwork things just work.
 
 
 
