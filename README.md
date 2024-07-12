@@ -1572,7 +1572,7 @@ ubuntu@vm1:~$
 
 ##### Test Setup Installation
 
-To test connectivity of IPSEC/SCTP, use the VM (vm-ext) with the following manifest (it will deploy an IPSEC client with tunnel destination=10.123.123.200 -IPSEC VIP- and SA 5.6.7.-1.2.3.4):
+To test connectivity of IPSEC/SCTP, use the VM (vm-ext) with the following manifest (it will deploy an IPSEC client with tunnel destination=10.123.123.200 -IPSEC VIP- and SA 5.6.7.8-1.2.3.4):
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
