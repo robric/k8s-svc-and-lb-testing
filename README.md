@@ -1570,14 +1570,13 @@ sctp-server-ipsec-78c66f958b-wlwsg   1/1     Running   0          15h   10.42.1.
 ubuntu@vm1:~$ 
 ```
 
-##### Test Setup Installation
-
-To test connectivity of IPSEC/SCTP, use the VM (vm-ext) with the following manifest (it will deploy an IPSEC client with tunnel destination=10.123.123.200 -IPSEC VIP- and SA 5.6.7.8-1.2.3.4):
+Next, to test connectivity of IPSEC/SCTP, use the VM (vm-ext) with the following manifest (it will deploy an IPSEC client with tunnel destination=10.123.123.200 -IPSEC VIP- and SA 5.6.7.8-1.2.3.4):
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
 ```
-##### Test IPSEC-SCTP-1: externalTrafficPolicy: Cluster
+
+##### Test IPSEC-SCTP-1: externalTrafficPolicy: Cluster == FAILED
 
 Although, things seems to work, since the client ultimately get an answer thanks to restransmissions, we're actually having packet drops: **[RESULT = FAILED]**:
 
@@ -1629,7 +1628,10 @@ ubuntu@vm-ext:~$ arp -na | grep 52:54:00:fd:51:52
 
 #
 # 2/ Connect to vm1 and run conntrack (sudo apt install conntrack) to inspect NAT contexts and check the src 
-# of returning traffic (10.42.x.y)
+# of returning traffic (10.42.x.y). 
+#
+# We can see that the tests are unresponsive when the target pod 
+# is running on vm1. These are actually packet drops (see next section for more traces). 
 #
 
 #
@@ -1657,7 +1659,7 @@ After investigations, we can see that
 - E/W packets from vm1 to vm2/vm3 pods are OK
 - local packets to VM1 pods are KO (dropped).
 
-##### Test IPSEC-SCTP-2: externalTrafficPolicy: Local
+##### Test IPSEC-SCTP-2: externalTrafficPolicy: Local == FAILED
 
 Now let's toggle externalTrafficPolicy to "Local" (kubectl edit ...). As we can expect from the previous test, all packets are dropped.
 
@@ -1734,26 +1736,29 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 #
 # It looks like we're having some conflicts between IPSEC policies and Netfilter.
 #
-# Let's just try to "hack and see" 
+# Let's just "hack and see" and see if there is a quick win.
 #
 
 ubuntu@vm1:~$ sudo sysctl -w net.bridge.bridge-nf-call-iptables=0
 net.bridge.bridge-nf-call-iptables = 0
 ubuntu@vm1:~$ 
-===> no luck
 
 #
-#
+#   ===> no luck that did not help (observing packet drops)
 #
 
 ```
-##### Test IPSEC-SCTP-3: use of Hostnetwork (externalTrafficPolicy: Local)
+##### Test IPSEC-SCTP-3: use of Hostnetwork (externalTrafficPolicy: Local) == PASS
 
 If we deploy sctp server pods in the hostnetwork, we're having a much simpler datapath with no interaction with the CNI.
 
 Deployment in Hostnetwork.
 
-
+```
+#
+# Chan
+#
+```
 
 
 ### Troubleshooting
