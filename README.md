@@ -1751,13 +1751,24 @@ ubuntu@vm1:~$
 ##### Test IPSEC-SCTP-3: use of Hostnetwork (externalTrafficPolicy: Local) == PASS
 
 If we deploy sctp server pods in the hostnetwork, we're having a much simpler datapath with no interaction with the CNI.
-
-Deployment in Hostnetwork.
+Either update previous deployment or apply directly the manifest:
 
 ```
-#
-# Chan
-#
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-vip1234-hostnetwork-local.yaml
+```
+
+As we can expect, only 1 pod per node can be deployed since there is conflict with the nodeport. So this option does not allow scale-out.
+
+```
+ubuntu@vm1:~$ kubectl get pods --selector app=sctp-server-ipsec -o wide
+NAME                                 READY   STATUS    RESTARTS   AGE    IP             NODE     NOMINATED NODE   READINESS GATES
+sctp-server-ipsec-7697554b65-2z6wm   0/1     Pending   0          110s   <none>         <none>   <none>           <none>
+sctp-server-ipsec-7697554b65-6lwx9   1/1     Running   0          110s   10.65.94.22    vm2      <none>           <none>
+sctp-server-ipsec-7697554b65-7mpj6   0/1     Pending   0          110s   <none>         <none>   <none>           <none>
+sctp-server-ipsec-7697554b65-7xbnb   0/1     Pending   0          110s   <none>         <none>   <none>           <none>
+sctp-server-ipsec-7697554b65-r2f5g   1/1     Running   0          110s   10.65.94.156   vm3      <none>           <none>
+sctp-server-ipsec-7697554b65-v8slk   1/1     Running   0          110s   10.65.94.121   vm1      <none>           <none>
+ubuntu@vm1:~$ 
 ```
 
 
