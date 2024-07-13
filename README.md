@@ -1822,9 +1822,25 @@ Client: Sending packets.(1/10)
 We can change the service configuration to externalTrafficPolicy: Cluster to verify if load balancing works properly.
 
 ```
+
 #
-# Check the src for nodeports IP (target SCTP server hooks).
-# Note the enforcement of SNAT with the IPSEC VIP owner nodeport IP (dst=10.65.94.22)
+# Run multiple tests with from the client side:
+#
+
+ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s
+remote:addr=1.2.3.4, port=webmin, family=2
+local:addr=5.6.7.8, port=0, family=2
+seed = 1720862539
+
+Starting tests...
+        socket(SOCK_SEQPACKET, IPPROTO_SCTP)  ->  sk=3
+        bind(sk=3, [a:5.6.7.8,p:0])  --  attempt 1/10
+Client: Sending packets.(1/10)
+[...]
+
+#
+# Check the result of NAT translation in conntrack and look at the src= for nodeports IP (target SCTP server hooks).
+# Note also the enforcement of SNAT with the IPSEC VIP owner nodeport IP (dst=10.65.94.22)
 #
 
 ubuntu@vm2:~$ sudo conntrack -E -p sctp -e NEW
@@ -1836,6 +1852,10 @@ ubuntu@vm2:~$ sudo conntrack -E -p sctp -e NEW
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=60532 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=43488
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=52803 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=1521
 ```
+
+**RESULTS:**
+-  HostNetwork: True + externalTrafficPolicy: Local   ===> PASS
+-  HostNetwork: True + externalTrafficPolicy: Cluster ===> PASS
 
 ### Troubleshooting
 
