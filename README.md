@@ -1771,6 +1771,40 @@ sctp-server-ipsec-7697554b65-v8slk   1/1     Running   0          110s   10.65.9
 ubuntu@vm1:~$ 
 ```
 
+A test from the external SCTP/IPSEC client confirms that this works flawlessly.
+
+```
+ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s
+remote:addr=1.2.3.4, port=webmin, family=2
+local:addr=5.6.7.8, port=0, family=2
+seed = 1720861856
+
+Starting tests...
+        socket(SOCK_SEQPACKET, IPPROTO_SCTP)  ->  sk=3
+        bind(sk=3, [a:5.6.7.8,p:0])  --  attempt 1/10
+Client: Sending packets.(1/10)
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1227113623
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=67657223
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=48650977
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=780993105
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=253104860
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=355882517
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1128917297
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1206479562
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=56642195
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1180223014```
+[...]
+```
 
 ### Troubleshooting
 
