@@ -1748,10 +1748,10 @@ ubuntu@vm1:~$
 #
 
 ```
-##### Test IPSEC-SCTP-3: use of Hostnetwork (externalTrafficPolicy: Local) == PASS
+##### Test IPSEC-SCTP-3: use of Hostnetwork with externalTrafficPolicy: Local and Cluster == PASS / PASS
 
 If we deploy sctp server pods in the hostnetwork, we're having a much simpler datapath with no interaction with the CNI.
-Either update previous deployment or apply directly the manifest:
+Either update previous deployment or delete current/apply the following manifest. It will deploy the sctp servers in the hostnetwork with "externalTrafficPolicy: Local".
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-vip1234-hostnetwork-local.yaml
@@ -1804,6 +1804,37 @@ Client: Sending packets.(1/10)
         sendmsg(sk=3, assoc=0)    1 bytes.
           SNDRCV(stream=0 flags=0x1 ppid=1180223014```
 [...]
+```
+
+```
+#
+#   conntrack traces confirms that "externalTrafficPolicy: Local" is properly honored:
+#             - IPSEC VIP master (here vm2) forwards trafic to local nodeport 10.65.94.22 (see kubectl get pods -o wide above).
+
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=44662 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=44662
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=41286 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=41286
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=60827 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=60827
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=60073 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=60073
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=38883 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=38883
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=51788 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=51788
+```
+
+We can change the service configuration to externalTrafficPolicy: Cluster to verify if load balancing works properly.
+
+```
+#
+# Check the src for nodeports IP (target SCTP server hooks).
+# Note the enforcement of SNAT with the IPSEC VIP owner nodeport IP (dst=10.65.94.22)
+#
+
+ubuntu@vm2:~$ sudo conntrack -E -p sctp -e NEW
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=40375 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=40375
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=50512 dport=10000 [UNREPLIED] src=10.65.94.22 dst=5.6.7.8 sport=9999 dport=50512
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=35412 dport=10000 [UNREPLIED] src=10.65.94.121 dst=10.65.94.22 sport=9999 dport=50422
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=46142 dport=10000 [UNREPLIED] src=10.65.94.121 dst=10.65.94.22 sport=9999 dport=8137
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=46735 dport=10000 [UNREPLIED] src=10.65.94.121 dst=10.65.94.22 sport=9999 dport=8345
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=60532 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=43488
+    [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=52803 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=1521
 ```
 
 ### Troubleshooting
