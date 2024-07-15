@@ -1853,9 +1853,13 @@ ubuntu@vm2:~$ sudo conntrack -E -p sctp -e NEW
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=52803 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=1521
 ```
 
-**RESULTS:**
--  HostNetwork: True + externalTrafficPolicy: Local   ===> PASS
--  HostNetwork: True + externalTrafficPolicy: Cluster ===> PASS
+##### Test Results Summary
+
+The below list summarizes the test results:
+-  HostNetwork: False + externalTrafficPolicy: Local   ===> FAILED
+-  HostNetwork: False + externalTrafficPolicy: Cluster ===> FAILED
+-  HostNetwork: True + externalTrafficPolicy: Local    ===> PASS
+-  HostNetwork: True + externalTrafficPolicy: Cluster  ===> PASS
 
 ### Troubleshooting
 
