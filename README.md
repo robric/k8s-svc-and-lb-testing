@@ -1484,6 +1484,18 @@ CONCLUSION: *We're getting decent statistical distribution of the session on all
 
 #### Metallb with IPSEC (strongswan) and SCTP
 
+##### TLDR - Test Results Summary
+
+Long story short, there is a conflict between CNI NAT translation and IPSEC policies. This can be worked around with route-based VPN, which introduces more configuration complexity (interface definition and routes).
+
+The below list summarizes the test results:
+-  IPSEC-SCTP-1: IPSEC policy-based forwarding + HostNetwork: False + externalTrafficPolicy: Local   ===> FAILED
+-  IPSEC-SCTP-2: IPSEC policy-based forwarding + HostNetwork: False + externalTrafficPolicy: Cluster ===> FAILED
+-  IPSEC-SCTP-3: IPSEC policy-based forwarding + HostNetwork: True + externalTrafficPolicy: Local    ===> PASS
+-  IPSEC-SCTP-4: IPSEC policy-based forwarding + HostNetwork: True + externalTrafficPolicy: Cluster  ===> PASS
+-  IPSEC-SCTP-5: IPSEC route-based VPN (vti-based) + HostNetwork: False  ===> FAILED
+-  IPSEC-SCTP-6: IPSEC route-based VPN (xfrmi-based) + HostNetwork: False  ===> PASS
+
 ##### Test Setup Installation
 
 In this section, we're testing a more complex integration with dual Metallb services:
@@ -1583,7 +1595,7 @@ Next, to test connectivity of IPSEC/SCTP, use the VM (vm-ext) with the following
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
 ```
 
-##### Test IPSEC-SCTP-1: externalTrafficPolicy: Cluster == FAILED
+##### Test IPSEC-SCTP-1: IPSEC policy-based forwarding (default) + externalTrafficPolicy: Cluster == FAILED
 
 Although, things seems to work, since the client ultimately get an answer thanks to restransmissions, we're actually having packet drops: **[RESULT = FAILED]**:
 
@@ -1666,7 +1678,7 @@ After investigations, we can see that
 - E/W packets from vm1 to vm2/vm3 pods are OK
 - local packets to VM1 pods are KO (dropped).
 
-##### Test IPSEC-SCTP-2: externalTrafficPolicy: Local == FAILED
+##### Test IPSEC-SCTP-2: IPSEC policy-based forwarding (default) + externalTrafficPolicy: Local == FAILED
 
 Now let's toggle externalTrafficPolicy to "Local" (kubectl edit ...). As we can expect from the previous test, all packets are dropped.
 
@@ -1755,7 +1767,7 @@ ubuntu@vm1:~$
 #
 
 ```
-##### Test IPSEC-SCTP-3: use of Hostnetwork with externalTrafficPolicy: Local and Cluster == PASS / PASS
+##### Test IPSEC-SCTP-3: IPSEC policy-based forwarding (default) + use of Hostnetwork == PASS
 
 If we deploy sctp server pods in the hostnetwork, we're having a much simpler datapath with no interaction with the CNI.
 Either update previous deployment or delete current/apply the following manifest. It will deploy the sctp servers in the hostnetwork with "externalTrafficPolicy: Local".
@@ -1859,14 +1871,9 @@ ubuntu@vm2:~$ sudo conntrack -E -p sctp -e NEW
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=60532 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=43488
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=52803 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=1521
 ```
+##### Test IPSEC-SCTP-3: IPSEC policy-based forwarding (default) + use of Hostnetwork == PASS
 
-##### Test Results Summary
 
-The below list summarizes the test results:
--  HostNetwork: False + externalTrafficPolicy: Local   ===> FAILED
--  HostNetwork: False + externalTrafficPolicy: Cluster ===> FAILED
--  HostNetwork: True + externalTrafficPolicy: Local    ===> PASS
--  HostNetwork: True + externalTrafficPolicy: Cluster  ===> PASS
 
 ### Troubleshooting
 
