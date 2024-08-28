@@ -1,8 +1,15 @@
-# Looking under the hood: clusterIP, nodeport and metallb
+# Testing and looking under the hood on kubernetes services: clusterIP, nodeport and metallb
 
-This page is:
+This repo focuses on the integration of services in kubernetes from basic clusterIP to loadbalancers. More precisely the following items are covered:
+-  basic k8s service custer and nodeport wiht inspection of iptables rules for comparison with more complex scenarios.
+-  load balancer services: metallb for now. Maybe enhanced with additional (loxilb) 
+-  IPSEC integration with metallb load balancer
+-  Metallb and SCTP support
+-  externaltrafficpolicy local/cluster knob for loadbalancer services
+
+This page is also:
 - a quick copy-paste source for rapidly bringing up test scenarios.
-- an educational source so I can quickly share how things work under the the hood when interfacing with diverse people... Indeed, few people actually understand the kubernetes networking logic.
+- an educational source to share how things work under the the hood when interfacing with diverse people... Indeed, kubernetes networking logic is actually not so well documented.
 - a personal cheat sheet for k8s for fast refresh.
 
 ## Prerequisite
