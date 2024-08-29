@@ -3,6 +3,24 @@ kind: ConfigMap
 metadata:
   name: ipsec-config
 data:
+  start.sh: |
+    #!/bin/sh
+    apt-get update && apt-get install -y strongswan strongswan-swanctl
+    cp /etc/swanctl/swanctl.conf-tmp /etc/swanctl/swanctl.conf
+    cp /etc/strongswan.conf-tmp /etc/strongswan.conf
+    ipsec start
+    sleep 5
+    swanctl --load-all
+    if ip link show "ipsec0" > /dev/null 2>&1; then
+        echo "Interface ipsec0 already exists."
+    else
+        ip link add ipsec0 type xfrm if_id 123
+        ip route add 5.6.7.8/32 dev ipsec0
+        ip link set ipsec0 up
+        echo "Interface ipsec0 created with route to 5.6.7.8/32"
+    fi
+    sleep 2
+    tail -f /dev/null
   swanctl.conf: |-
     connections {
       tunnel-accept-any {
@@ -56,38 +74,25 @@ data:
         }
       }
 
-      # two defined file loggers
       filelog {
         charon {
-            # path to the log file, specify this as section name in versions prior to 5.7.0
             path = /var/log/charon.log
-            # add a timestamp prefix
             time_format = %b %e %T
-            # prepend connection name, simplifies grepping
             ike_name = yes
-            # overwrite existing files
             append = no
-            # increase default loglevel for all daemon subsystems
             default = 2
-            # flush each line to disk
             flush_line = yes
         }
         stderr {
-            # more detailed loglevel for a specific subsystem, overriding the
-            # default loglevel.
             ike = 2
             knl = 3
             net = 3
         }
       }
-      # and two loggers using syslog
       syslog {
-          # prefix for each log message
           identifier = charon-custom
-          # use default settings to log to the LOG_DAEMON facility
           daemon {
           }
-          # very minimalistic IKE auditing logs to LOG_AUTHPRIV
           auth {
               default = -1
               ike = 0
@@ -113,19 +118,7 @@ spec:
       - name: strongswan
         image: ubuntu:latest
         command: ["/bin/sh"]
-        args: ["-c", "apt-get update && \
-         apt-get install -y strongswan && \
-         apt-get install -y strongswan-swanctl && \
-         cp /etc/swanctl/swanctl.conf-tmp /etc/swanctl/swanctl.conf && \
-         cp /etc/strongswan.conf-tmp /etc/strongswan.conf && \
-         ipsec start && \
-         sleep 5 && \
-         swanctl --load-all && \
-         (ip link show ipsec0 || ip link add ipsec0 type xfrm if_id 123) 2> /dev/null && \
-         sleep 2 && \
-         ip link set ipsec0 up && \
-         ip route add 5.6.7.8/32 dev ipsec0 && \
-         tail -f /dev/null"]
+        args: ["/start.sh"]
         securityContext:
           privileged: true
           runAsUser: 0
@@ -138,25 +131,25 @@ spec:
             name: vpn-ike
             protocol: UDP
         volumeMounts:
-        - mountPath: /etc/swanctl/swanctl.conf-tmp
-          name: config
+        - name: config
+          mountPath: /start.sh
+          subPath: start.sh
+          readOnly: true
+        - name: config
+          mountPath: /etc/swanctl/swanctl.conf-tmp
           subPath: swanctl.conf
-        - mountPath: /etc/strongswan.conf-tmp
-          name: config
+        - name: config
+          mountPath: /etc/strongswan.conf-tmp
           subPath: strongswan.conf
         env:
           - name: DEBIAN_FRONTEND
             value: noninteractive
       volumes:
-      - configMap:
-          items:
-          - key: swanctl.conf
-            path: swanctl.conf
-          - key: strongswan.conf
-            path: strongswan.conf
+      - name: config
+        configMap:
           name: ipsec-config
-        name: config
       restartPolicy: Always
+
 ---
 apiVersion: v1
 kind: Service
