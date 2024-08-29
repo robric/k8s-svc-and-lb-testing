@@ -5,12 +5,15 @@ metadata:
 data:
   start.sh: |
     #!/bin/sh
+    echo "Installing Strongswan packages..."
     apt-get update && apt-get install -y strongswan strongswan-swanctl
     cp /etc/swanctl/swanctl.conf-tmp /etc/swanctl/swanctl.conf
     cp /etc/strongswan.conf-tmp /etc/strongswan.conf
+    echo "Starting Strongswan..."
     ipsec start
     sleep 5
     swanctl --load-all
+    echo "Defining ipsec0 interface if not existing..."
     if ip link show "ipsec0" > /dev/null 2>&1; then
         echo "Interface ipsec0 already exists."
     else
@@ -20,6 +23,7 @@ data:
         echo "Interface ipsec0 created with route to 5.6.7.8/32"
     fi
     sleep 2
+    echo "We're done !"
     tail -f /dev/null
   swanctl.conf: |-
     connections {
