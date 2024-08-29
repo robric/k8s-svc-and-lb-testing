@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ipsec-config
+data:
+  ipsec.conf: |-
+    config setup
+        charondebug="ike 2, knl 2, cfg 2"
+    conn mytunnel
+        authby=secret
+        left=10.123.123.4
+        leftid=@myclient
+        leftsubnet=5.6.7.8/32
+        right=10.123.123.200
+        rightid=@myserver
+        rightsubnet=1.2.3.4/32,11.12.13.14/32
+        auto=start
+        type=tunnel
+        dpdaction=restart
+        closeaction=restart
+        #installpolicy=no
+        dpddelay=10s
+        dpdtimeout=30s
+        #mark=123
+  ipsec.secrets: |-
+    @myserver @myclient : PSK "verysecure"
+  strongswan.conf: |-
+    charon {
+      install_routes = no
+      send_vendor_id = yes
+      dns1 = 8.8.8.8
+      dns2 = 8.8.4.4
+      plugins {
+        eap-dynamic {
+          preferred = mschapv2, tls, md5
+        }
+        dhcp {
+          identity_lease = yes
+        }
+      }
+
+      # two defined file loggers
+      filelog {
+        charon {
+            # path to the log file, specify this as section name in versions prior to 5.7.0
+            path = /var/log/charon.log
+            # add a timestamp prefix
+            time_format = %b %e %T
+            # prepend connection name, simplifies grepping
+            ike_name = yes
+            # overwrite existing files
+            append = no
+            # increase default loglevel for all daemon subsystems
+            default = 2
+            # flush each line to disk
+            flush_line = yes
+        }
+        stderr {
+            # more detailed loglevel for a specific subsystem, overriding the
+            # default loglevel.
+            ike = 2
+            knl = 3
+            net = 3
+        }
+      }
+      # and two loggers using syslog
+      syslog {
+          # prefix for each log message
+          identifier = charon-custom
+          # use default settings to log to the LOG_DAEMON facility
+          daemon {
+          }
+          # very minimalistic IKE auditing logs to LOG_AUTHPRIV
+          auth {
+              default = -1
+              ike = 0
+          }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ipsec-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strongswan
+  template:
+    metadata:
+      labels:
+        app: strongswan
+    spec:
+      hostNetwork: true
+      containers:
+      - name: strongswan
+        image: ubuntu:latest
+        command: ["/bin/sh"]
+        args: ["-c", "apt-get update && \
+         apt-get install -y strongswan && \
+         cp /etc/ipsec.conf-tmp /etc/ipsec.conf && \
+         cp /etc/ipsec.secrets-tmp /etc/ipsec.secrets && \
+         cp /etc/strongswan.conf-tmp /etc/strongswan.conf && \
+         ipsec start && \
+         tail -f /dev/null"]
+        securityContext:
+          privileged: true
+          runAsUser: 0
+          runAsGroup: 0
+        ports:
+          - containerPort: 500
+            name: vpn-isakmp
+            protocol: UDP
+          - containerPort: 4500
+            name: vpn-ike
+            protocol: UDP
+        volumeMounts:
+        - mountPath: /etc/ipsec.conf-tmp
+          name: config
+          subPath: ipsec.conf
+        - mountPath: /etc/ipsec.secrets-tmp
+          name: config
+          subPath: ipsec.secrets
+        - mountPath: /etc/strongswan.conf-tmp
+          name: config
+          subPath: strongswan.conf
+        env:
+          - name: DEBIAN_FRONTEND
+            value: noninteractive
+      volumes:
+      - configMap:
+          items:
+          - key: ipsec.conf
+            path: ipsec.conf
+          - key: ipsec.secrets
+            path: ipsec.secrets
+          - key: strongswan.conf
+            path: strongswan.conf
+          name: ipsec-config
+        name: config
+      restartPolicy: Always
