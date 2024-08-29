@@ -1966,11 +1966,34 @@ Different type of failure:
 
 #####  IPSEC-SCTP-6: IPSEC route-based VPN (xfrmi-based) + HostNetwork: False  ===> PASS
 
-Once I moved to swanctl config with XFRM interfaces things worked like a charm. There might be a solution with the legacy ipsec.conf config, but I could not find it. 
+Once moved to swanctl config with XFRM interfaces things work like a charm. There might be a solution with the legacy ipsec.conf config (but I could not make it work at all).
 
-The swanctl.conf is the following. The binding with xfrm interface happens thanks to the f_id_out/in identifiers, which must map with the xfrm interface identifier.
+For conveniency, IPSEC configuration are displayed below. Only vm1 is based on latest swanctl configuration (swanctl.conf file), where the binding with xfrm interface happens thanks to the f_id_out/in identifiers, which must map with the xfrm interface identifier.
 
 ```
+vm-ext (client): ipsec.conf (legacy)
+
+config setup
+    charondebug="ike 2, knl 2, cfg 2"
+conn mytunnel
+    authby=secret
+    left=10.123.123.4
+    leftid=@myclient
+    leftsubnet=5.6.7.8/32
+    right=10.123.123.200
+    rightid=@myserver
+    rightsubnet=1.2.3.4/32,11.12.13.14/32
+    auto=start
+    type=tunnel
+    dpdaction=restart
+    closeaction=restart
+    #installpolicy=no
+    dpddelay=10s
+    dpdtimeout=30s
+    #mark=123
+
+vm1 (server) swanctl.conf:
+
 connections {
   tunnel-accept-any {
     local_addrs  = %any
@@ -2008,6 +2031,17 @@ secrets {
   }
 }
 ```
+
+Interface Configuration (vm1):
+
+```
+###### 123 is the xfrm  identifier, which appears in swanctl config if_id_in/out variables.
+
+sudo ip link add ipsec0 type xfrm if_id 123
+sudo ip link set ipsec0 up
+sudo ip route add 5.6.7.8/32 dev ipsec0
+```
+
 
 ## Troubleshooting
 
