@@ -1767,7 +1767,7 @@ ubuntu@vm1:~$
 #
 
 ```
-##### Test IPSEC-SCTP-3: IPSEC policy-based forwarding (default) + use of Hostnetwork == PASS
+##### Test IPSEC-SCTP-3 / IPSEC-SCTP-4  : IPSEC policy-based forwarding (default) + use of Hostnetwork + external network local/cluster == PASS/PASS
 
 If we deploy sctp server pods in the hostnetwork, we're having a much simpler datapath with no interaction with the CNI.
 Either update previous deployment or delete current/apply the following manifest. It will deploy the sctp servers in the hostnetwork with "externalTrafficPolicy: Local".
@@ -1871,11 +1871,145 @@ ubuntu@vm2:~$ sudo conntrack -E -p sctp -e NEW
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=60532 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=43488
     [NEW] sctp     132 10 CLOSED src=5.6.7.8 dst=1.2.3.4 sport=52803 dport=10000 [UNREPLIED] src=10.65.94.156 dst=10.65.94.22 sport=9999 dport=1521
 ```
-##### Test IPSEC-SCTP-3: IPSEC policy-based forwarding (default) + use of Hostnetwork == PASS
+
+#####  IPSEC-SCTP-5: IPSEC route-based VPN (vti-based) + HostNetwork: False  ===> FAILED
+
+I was not able to have IPSEC configuration based on vti interfaces working using the legacy configuration mode for strongswan (aka stroke).
+This is based on the configuration of vti interface matching a mark (100) in the IPSEC tunnel configuration.
+
+Tested and NOT working:
+- configuration installpolicy: yes and no
+- cleaning of ip xfrm states in between tests 
+- no use of VIP at all to simplify troubleshooting: overlay trafic between 5.6.7.8 (loopback on vm-ext) and 11.12.13.14 (loopback on vm1) / underlay IPSEC 10.123.123.4 (vm-ext) and 10.123.123.1 (vm1) with basic ping: ubuntu@vm-ext:~$ ping 11.12.13.14 -I 5.6.7.8
 
 
+Strongswan configuration
+```
+###################  vm-ext
 
-### Troubleshooting
+ipsec.conf:
+----
+config setup
+    charondebug="ike 2, knl 2, cfg 2"
+
+conn mytunnel
+    authby=secret
+    left=10.123.123.4
+    leftid=@myclient
+    leftsubnet=5.6.7.8/32
+    right=10.123.123.1
+    rightid=@myserver
+    rightsubnet=1.2.3.4/32,11.12.13.14/32
+    auto=start
+    mark=100
+    type=tunnel
+    dpdaction=restart
+    closeaction=restart
+    #installpolicy=no
+    dpddelay=10s
+    dpdtimeout=30s
+
+###################  vm1
+
+ipsec.conf:
+----
+config setup
+    charondebug="ike 2, knl 2, cfg 2"
+
+conn mytunnel
+    authby=secret
+    left=%any
+    leftid=@myserver
+    leftsubnet=0.0.0.0/0
+    right=%any
+    rightid=%any
+    rightsubnet=0.0.0.0/0
+    auto=start
+    aggressive=no
+    type=tunnel
+    dpddelay=10s
+    dpdtimeout=30s
+    keyexchange=ikev2
+    mark=100
+    reauth=no
+    dpdaction=restart
+    closeaction=restart
+    #installpolicy=no
+    compress=no
+    mobike=yes
+```
+
+vti interface configuration:
+
+```
+vm-ext:
+
+sudo ip link add vti100 type vti key 100 remote 10.123.123.4 local 10.123.123.1
+sudo ip link set vti100 up
+sudo ip addr add 77.77.77.2/24 remote 77.77.77.1/24 dev vti100
+sudo sysctl -w "net.ipv4.conf.vti100.disable_policy=1"
+
+vm1:
+
+sudo ip link add vti100 type vti key 100 remote 10.123.123.1 local 10.123.123.4
+sudo ip link set vti100 up
+sudo ip addr add 77.77.77.1/24 remote 77.77.77.2/24 dev vti100
+sudo sysctl -w "net.ipv4.conf.vti100.disable_policy=1"
+```
+
+RESULT:
+
+Different type of failure:
+- packets not transmitted at all over IPSEC (tcpdump)
+- when transmitted, we get errors at vti interface (ip -s link show dev vti100)
+- configuration of "mark" in the ipsec.conf is the trigger for dropping packets
+
+#####  IPSEC-SCTP-6: IPSEC route-based VPN (xfrmi-based) + HostNetwork: False  ===> PASS
+
+Once I moved to swanctl config with XFRM interfaces things worked like a charm. There might be a solution with the legacy ipsec.conf config, but I could not find it. 
+
+The swanctl.conf is the following. The binding with xfrm interface happens thanks to the f_id_out/in identifiers, which must map with the xfrm interface identifier.
+
+```
+connections {
+  tunnel-accept-any {
+    local_addrs  = %any
+    remote_addrs = %any
+    local {
+      auth = psk
+      id = myserver
+    }
+    remote {
+      auth = psk
+      id = myclient
+    }
+    children {
+      net-net {
+        if_id_out = 123
+        if_id_in = 123
+        mode = tunnel
+        local_ts  = 0.0.0.0/0
+        remote_ts = 0.0.0.0/0
+        esp_proposals = aes128gcm128
+        start_action = start
+      }
+    }
+    version = 2
+    mobike = no
+    reauth_time = 10800
+    proposals = aes128-sha256-modp3072
+  }
+}
+secrets {
+  ike-1 {
+    id-1 = myserver
+    id-2 = myclient
+    secret = "verysecure"
+  }
+}
+```
+
+## Troubleshooting
 
 Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
 
