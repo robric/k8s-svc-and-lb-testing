@@ -1968,6 +1968,16 @@ Different type of failure:
 
 Once moved to swanctl config with XFRM interfaces things work like a charm. There might be a solution with the legacy ipsec.conf config (but I could not make it work at all).
 
+The following manifest will install Strongswan with route-based VPN in the cluster together with a metallb VIP (10.123.123.200). A start script takes care of configuring the xfrm interface. 
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/strongswan-daemonset-route-based-vpn.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/strongswan-client-v2.yaml
+```
+Next, the same manifest for the SCTP servers (6) as in IPSEC-SCTP-1 is used for testing SCTP. 
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-vip1234.yaml
+```
+
 For conveniency, IPSEC configuration are displayed below. Only vm1 is based on latest swanctl configuration (swanctl.conf file), where the binding with xfrm interface happens thanks to the f_id_out/in identifiers, which must map with the xfrm interface identifier.
 
 ```
@@ -2032,7 +2042,7 @@ secrets {
 }
 ```
 
-Interface Configuration (vm1):
+The interface Configuration for route-based VPN is the following:
 
 ```
 ###### 123 is the xfrm  identifier, which appears in swanctl config if_id_in/out variables.
@@ -2041,6 +2051,7 @@ sudo ip link add ipsec0 type xfrm if_id 123
 sudo ip link set ipsec0 up
 sudo ip route add 5.6.7.8/32 dev ipsec0
 ```
+
 
 
 ## Troubleshooting
