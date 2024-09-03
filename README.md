@@ -1966,19 +1966,24 @@ Different type of failure:
 
 #####  IPSEC-SCTP-6: IPSEC route-based VPN (xfrmi-based) + HostNetwork: False  ===> PASS
 
-Once moved to swanctl config with XFRM interfaces things work like a charm. There might be a solution with the legacy ipsec.conf config (but I could not make it work at all).
+When using XFRM interfaces for route-based VPN together with swanctl-based configuration mode, things just work like a charm. There is no more packet drop. There might be a solution with the legacy ipsec.conf config (but I could not make it work at all).
 
 The following manifest will install Strongswan with route-based VPN in the cluster together with a metallb VIP (10.123.123.200). A start script takes care of configuring the xfrm interface. 
 ```
+cluster:
+
 kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/strongswan-daemonset-route-based-vpn.yaml
+
+client (vm-ext):
+
 kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/strongswan-client-v2.yaml
 ```
-Next, the same manifest for the SCTP servers (6) as in IPSEC-SCTP-1 is used for testing SCTP. 
+Next, the same manifest for the SCTP servers (6) as in IPSEC-SCTP-1 is used for testing SCTP.
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-vip1234.yaml
 ```
 
-For conveniency, IPSEC configuration are displayed below. Only vm1 is based on latest swanctl configuration (swanctl.conf file), where the binding with xfrm interface happens thanks to the f_id_out/in identifiers, which must map with the xfrm interface identifier.
+For conveniency, IPSEC configuration are displayed below. Only vm1 is based on latest swanctl configuration (swanctl.conf file), where the binding with xfrm interface happens thanks to the f_id_out/in identifiers, which must map with the xfrm interface identifier (123 in our case).
 
 ```
 vm-ext (client): ipsec.conf (legacy)
@@ -2051,6 +2056,80 @@ sudo ip link add ipsec0 type xfrm if_id 123
 sudo ip link set ipsec0 up
 sudo ip route add 5.6.7.8/32 dev ipsec0
 ```
+
+
+## Openshift Integration
+
+### Background
+
+This section focuses on openshift, which has specific OVN-dependencies for setting up NAT translations.
+
+
+### Installation
+
+Metallb can be installed following [IBM guidelines](https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/networking/load-balancing-with-metallb#metallb-operator-install). There is nothing special to mention.
+
+*IMPORTANT: IpForwarding configuration setting since OCP 4.14*
+
+To have metallb working with external networks, the cluster must be configured with "ipForwarding: Global". Without this, the VIP is not reachable from any external server.
+
+```
+ec2-user@eksa-cluster:~$ oc get network.operator.openshift.io cluster -o yaml
+apiVersion: operator.openshift.io/v1
+kind: Network
+[...]
+spec:
+  clusterNetwork:
+  - cidr: 10.128.0.0/23
+    hostPrefix: 25
+  defaultNetwork:
+    ovnKubernetesConfig:
+      egressIPConfig: {}
+      gatewayConfig:
+        ipForwarding: Global  <============================= VERY IMPORTANT !
+[...]
+```
+
+More information on this configuration can be found in this [redhat link](https://docs.openshift.com/container-platform/4.14/networking/cluster-network-operator.html?extIdCarryOver=true&sc_cid=701f2000001Css5AAC#nw-operator-cr-cno-object_cluster-network-operator:~:text=host%20networking%20stack.-,ipForwarding,-object)
+
+Setup Description:
+
+The cluster is made up 3 nodes:
+
+```
+ec2-user@eksa-cluster:~$ oc get nodes -o wide
+NAME                  STATUS   ROLES                         AGE   VERSION            INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                                                       KERNEL-VERSION                 CONTAINER-RUNTIME
+fiveg-host-21-node1   Ready    control-plane,master,worker   71d   v1.27.14+95b99ee   10.87.104.21   <none>        Red Hat Enterprise Linux CoreOS 414.92.202405282322-0 (Plow)   5.14.0-284.67.1.el9_2.x86_64   cri-o://1.27.6-5.rhaos4.14.gitbd7f4e0.el9
+fiveg-host-21-node3   Ready    control-plane,master,worker   71d   v1.27.14+95b99ee   10.87.104.23   <none>        Red Hat Enterprise Linux CoreOS 414.92.202405282322-0 (Plow)   5.14.0-284.67.1.el9_2.x86_64   cri-o://1.27.6-5.rhaos4.14.gitbd7f4e0.el9
+fiveg-host-21-node4   Ready    control-plane,master,worker   71d   v1.27.14+95b99ee   10.87.104.24   <none>        Red Hat Enterprise Linux CoreOS 414.92.202405282322-0 (Plow)   5.14.0-284.67.1.el9_2.x86_64   cri-o://1.27.6-5.rhaos4.14.gitbd7f4e0.el9
+ec2-user@eksa-cluster:~$ 
+```
+
+Routing and subnetting overview:
+
+- Openshifts sets-up the kubernetes routing a bridge interface: br-ex, where each node gets an IP from subnet 10.87.104.0/25
+- We created an additional network: 10.131.2.0/24 on interface ens1f1np1.3002 (vlan 3002) in which the metallb VIP is defined. 
+- Pod network CIDR is 10.128.0.0/23, with a /25 subnet for each server (e.g. 10.128.0.128/25 in the trace below).
+- Kubernetes service network CIDR is 172.30.0.0/25
+
+```
+[core@fiveg-host-21-node4 ~]$ ip route show 
+default via 10.87.104.126 dev br-ex proto dhcp src 10.87.104.24 metric 48 
+10.87.104.0/25 dev br-ex proto kernel scope link src 10.87.104.24 metric 48 
+10.128.0.0/23 via 10.128.0.129 dev ovn-k8s-mp0 
+10.128.0.128/25 dev ovn-k8s-mp0 proto kernel scope link src 10.128.0.130 
+10.131.2.0/24 dev ens1f1np1.3002 proto kernel scope link src 10.131.2.4 metric 400 
+169.254.169.0/29 dev br-ex proto kernel scope link src 169.254.169.2 
+169.254.169.1 dev br-ex src 10.87.104.24 
+169.254.169.3 via 10.128.0.129 dev ovn-k8s-mp0 
+172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400 
+[core@fiveg-host-21-node4 ~]$ 
+```
+
+### metallb service instantiation
+
+#### ExternalTraficPolicy: Cluster
+
 
 
 
