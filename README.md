@@ -2067,7 +2067,7 @@ This section focuses on openshift, which has specific OVN-dependencies for setti
 
 ### Installation
 
-Metallb can be installed following [IBM guidelines](https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/networking/load-balancing-with-metallb#metallb-operator-install). There is nothing special to mention.
+Metallb can be installed following [IBM guidelines](https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/networking/load-balancing-with-metallb#metallb-operator-install). There is nothing special to mention outside this:
 
 *IMPORTANT: IpForwarding configuration setting since OCP 4.14*
 
@@ -2092,7 +2092,7 @@ spec:
 
 More information on this configuration can be found in this [redhat link](https://docs.openshift.com/container-platform/4.14/networking/cluster-network-operator.html?extIdCarryOver=true&sc_cid=701f2000001Css5AAC#nw-operator-cr-cno-object_cluster-network-operator:~:text=host%20networking%20stack.-,ipForwarding,-object)
 
-Setup Description:
+### Setup Description:
 
 The cluster is made up 3 nodes:
 
