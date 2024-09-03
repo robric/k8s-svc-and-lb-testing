@@ -2105,9 +2105,9 @@ fiveg-host-21-node4   Ready    control-plane,master,worker   71d   v1.27.14+95b9
 ec2-user@eksa-cluster:~$ 
 ```
 
-Routing and subnetting overview:
+Interface, Routing and subnetting overview:
 
-- Openshifts sets-up the kubernetes routing a bridge interface: br-ex, where each node gets an IP from subnet 10.87.104.0/25
+- Openshifts sets-up the kubernetes routing a bridge interface: br-ex, where each node gets an IP from subnet 10.87.104.0/25. br-ex is an ovs-bridge that contains the phyiscal NIC used for the cluster and another "patch" link (this patch actually  connects to an internal bridge (br-int) on which GENEVE ports and POD ports are attached, we'll see that later) 
 - We created an additional network: 10.131.2.0/24 on interface ens1f1np1.3002 (vlan 3002) in which the metallb VIP is defined. 
 - Pod network CIDR is 10.128.0.0/23, with a /25 subnet for each server (e.g. 10.128.0.128/25 in the trace below).
 - Kubernetes service network CIDR is 172.30.0.0/25
@@ -2124,6 +2124,17 @@ default via 10.87.104.126 dev br-ex proto dhcp src 10.87.104.24 metric 48
 169.254.169.3 via 10.128.0.129 dev ovn-k8s-mp0 
 172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400 
 [core@fiveg-host-21-node4 ~]$ 
+
+[core@fiveg-host-21-node4 ~]$ ip -d link show dev br-ex
+18: br-ex: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/ether 84:16:0c:ad:e1:fc brd ff:ff:ff:ff:ff:ff promiscuity 1 minmtu 68 maxmtu 65535 
+    openvswitch addrgenmode none numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 
+
+[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl list-ports br-ex
+eno12399
+patch-br-ex_fiveg-host-21-node4-to-br-int
+[core@fiveg-host-21-node4 ~]$ 
+
 ```
 
 ### metallb service instantiation
@@ -2131,6 +2142,98 @@ default via 10.87.104.126 dev br-ex proto dhcp src 10.87.104.24 metric 48
 #### ExternalTraficPolicy: Cluster
 
 
+After the deployment of the manifest, we have the following:
+- 3 nginx pods in the cluster (ip addresses displayed below)
+- a metallb load balancer server with VIP 10.131.2.14
+- The services also is configured with 172.30.0.4 to cluster IP and port 32529 for nodeport
+
+```
+ec2-user@eksa-cluster:~$ kubectl get pods -o wide | grep l2
+nginx-lbl2-68879b7cdd-fz8xd       1/1     Running     1          4d4h   10.128.0.22    fiveg-host-21-node1   <none>           <none>
+nginx-lbl2-68879b7cdd-nlgph       1/1     Running     0          27h    10.128.0.205   fiveg-host-21-node4   <none>           <none>
+nginx-lbl2-68879b7cdd-nqdwk       1/1     Running     1          4d4h   10.128.0.219   fiveg-host-21-node4   <none>           <none>
+ec2-user@eksa-cluster:~$ 
+ec2-user@eksa-cluster:~$ kubectl get svc
+NAME                                 TYPE           CLUSTER-IP     EXTERNAL-IP                            PORT(S)                      AGE
+nginx-mlb-l2-service                 LoadBalancer   172.30.0.4     10.131.2.14                            8080:32529/TCP               4d4h
+```
+
+Let's now inspect the processing of the IP packet. As we will see, OVN behaves differently compared with flannel (previous sections).
+
+
+Step 1: find the metallb VIP owner
+
+```
+##### From an external server check mac 
+ec2-user@eksa-cluster:~$ arp -na | grep 131.2
+? (10.131.2.3) at 84:16:0c:e1:e1:11 [ether] on v.3002
+? (10.131.2.2) at 84:16:0c:e7:0d:c1 [ether] on v.3002
+? (10.131.2.4) at 84:16:0c:e7:3e:f1 [ether] on v.3002
+? (10.131.2.14) at 84:16:0c:e7:3e:f1 [ether] on v.3002
+ec2-user@eksa-cluster:~$ 
+
+
+===> so this is 84:16:0c:e7:3e:f1 which belongs to 10.131.2.4 (fiveg-host-21-node4). 
+```
+
+Step 2: Connect to VIP master node and inspect iptables trace during when a session is initiated from the external server (curl 10.131.2.14:8080 with source 10.131.2.1)
+
+```
+[core@fiveg-host-21-node4 ~]$ sudo iptables -t raw -A PREROUTING -p tcp -m tcp --dport 8080 -j TRACE
+[core@fiveg-host-21-node4 ~]$ sudo nft monitor
+trace id 552cb577 ip raw PREROUTING packet: iif "ens1f1np1.3002" ether saddr 84:16:0c:e7:45:a1 ether daddr 84:16:0c:e7:3e:f1 vlan pcp 0 vlan dei 0 vlan id 3002 ip saddr 10.131.2.1 ip daddr 10.131.2.14 ip dscp 0x04 ip ecn not-ect ip ttl 64 ip id 6310 ip length 60 tcp sport 46368 tcp dport 8080 tcp flags == syn tcp window 64240 
+trace id 552cb577 ip raw PREROUTING rule tcp dport 8080 counter packets 394 bytes 24141 meta nftrace set 1 (verdict continue)
+trace id 552cb577 ip raw PREROUTING verdict continue 
+trace id 552cb577 ip raw PREROUTING policy accept 
+trace id 552cb577 ip nat PREROUTING packet: iif "ens1f1np1.3002" ether saddr 84:16:0c:e7:45:a1 ether daddr 84:16:0c:e7:3e:f1 vlan pcp 0 vlan dei 0 vlan id 3002 ip saddr 10.131.2.1 ip daddr 10.131.2.14 ip dscp 0x04 ip ecn not-ect ip ttl 64 ip id 6310 ip length 60 tcp sport 46368 tcp dport 8080 tcp flags == syn tcp window 64240 
+trace id 552cb577 ip nat PREROUTING rule counter packets 1138501 bytes 69191411 jump OVN-KUBE-ETP (verdict jump OVN-KUBE-ETP)
+trace id 552cb577 ip nat OVN-KUBE-ETP verdict continue 
+trace id 552cb577 ip nat PREROUTING rule counter packets 1138480 bytes 69190151 jump OVN-KUBE-EXTERNALIP (verdict jump OVN-KUBE-EXTERNALIP)
+trace id 552cb577 ip nat OVN-KUBE-EXTERNALIP rule ip daddr 10.131.2.14 tcp dport 8080 counter packets 44 bytes 2592 dnat to 172.30.0.4:8080 (verdict accept)
+trace id 552cb577 ip filter FORWARD packet: iif "ens1f1np1.3002" oif "br-ex" ether saddr 84:16:0c:e7:45:a1 ether daddr 84:16:0c:e7:3e:f1 vlan pcp 0 vlan dei 0 vlan id 3002 ip saddr 10.131.2.1 ip daddr 172.30.0.4 ip dscp 0x04 ip ecn not-ect ip ttl 63 ip id 6310 ip length 60 tcp sport 46368 tcp dport 8080 tcp flags == syn tcp window 64240 
+trace id 552cb577 ip filter FORWARD rule ip daddr 172.30.0.0/25 counter packets 179 bytes 11369 accept (verdict accept)
+trace id 552cb577 ip nat POSTROUTING packet: iif "ens1f1np1.3002" oif "br-ex" ether saddr 84:16:0c:e7:45:a1 ether daddr 84:16:0c:e7:3e:f1 vlan pcp 0 vlan dei 0 vlan id 3002 ip saddr 10.131.2.1 ip daddr 172.30.0.4 ip dscp 0x04 ip ecn not-ect ip ttl 63 ip id 6310 ip length 60 tcp sport 46368 tcp dport 8080 tcp flags == syn tcp window 64240 
+trace id 552cb577 ip nat POSTROUTING rule counter packets 5777353 bytes 347484587 jump OVN-KUBE-EGRESS-IP-MULTI-NIC (verdict jump OVN-KUBE-EGRESS-IP-MULTI-NIC)
+trace id 552cb577 ip nat OVN-KUBE-EGRESS-IP-MULTI-NIC verdict continue 
+trace id 552cb577 ip nat POSTROUTING rule counter packets 5777356 bytes 347484763 jump OVN-KUBE-EGRESS-SVC (verdict jump OVN-KUBE-EGRESS-SVC)
+trace id 552cb577 ip nat OVN-KUBE-EGRESS-SVC verdict continue 
+trace id 552cb577 ip nat POSTROUTING rule  ct status dnat counter packets 174 bytes 10392 jump CRIO-HOSTPORTS-MASQ (verdict jump CRIO-HOSTPORTS-MASQ)
+trace id 552cb577 ip nat CRIO-HOSTPORTS-MASQ rule  counter packets 174 bytes 10392 jump CRIO-MASQ-C2WD6IWOV6PO2R2J (verdict jump CRIO-MASQ-C2WD6IWOV6PO2R2J)
+trace id 552cb577 ip nat CRIO-MASQ-C2WD6IWOV6PO2R2J verdict continue 
+trace id 552cb577 ip nat CRIO-HOSTPORTS-MASQ verdict continue 
+trace id 552cb577 ip nat POSTROUTING verdict continue 
+trace id 552cb577 ip nat POSTROUTING policy accept 
+
+#
+#     We can notice that:
+#   - initial packet 10.131.2.1->10.131.2.1:8080 it DNatted to 10.131.2.1->172.30.0.4:8080, which is the
+#     Cluster IP address 
+#   - packets are properly forwarded to br-ex interface (see ip route) 
+#
+
+#  A summary of nat iptables inspection confirms the NAT action visible in the trace. 
+
+
+[core@fiveg-host-21-node4 ~]$ sudo iptables -t nat -L -v
+Chain PREROUTING (policy ACCEPT 0 packets, 0 bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+ 4958  298K REDIRECT   tcp  --  any    any     anywhere             fiveg-host-21-node4  tcp dpt:sun-sr-https /* OCP_API_LB_REDIRECT */ redir ports 9445
+1140K   69M OVN-KUBE-ETP  all  --  any    any     anywhere             anywhere            
+1140K   69M OVN-KUBE-EXTERNALIP  all  --  any    any     anywhere             anywhere            
+
+Chain OVN-KUBE-EXTERNALIP (2 references)
+ pkts bytes target     prot opt in     out     source               destination         
+[...]
+   45  2652 DNAT       tcp  --  any    any     anywhere             10.131.2.14          tcp dpt:webcache to:172.30.0.4:8080
+```
+
+We also can see after NAT to the service IP, the packets are forwarded to a link local address 169.254.169.4 on br-ex (ovs-bridge). We'll inspect this later.
+
+```
+[core@fiveg-host-21-node4 ~]$ ip route
+[...]
+172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400
+```
 
 
 ## Troubleshooting
