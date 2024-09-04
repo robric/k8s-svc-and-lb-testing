@@ -2121,7 +2121,7 @@ ec2-user@eksa-cluster:~$
 
 Interface, Routing and subnetting overview:
 
-- Openshifts sets-up the kubernetes routing a bridge interface: br-ex, where each node gets an IP from subnet 10.87.104.0/25. br-ex is an ovs-bridge that contains the phyiscal NIC used for the cluster and another "patch" link (this patch actually  connects to an internal bridge "br-int" on which  GENEVE ports and POD ports are attached, we'll see that later) 
+- Openshifts sets-up the kubernetes routing a bridge interface: br-ex, where each node gets an IP from subnet 10.87.104.0/25. br-ex is an ovs-bridge that contains the phyiscal NIC used for the cluster and indirect connectivity to pods (details later).
 - We created an additional network: 10.131.2.0/24 on interface ens1f1np1.3002 (vlan 3002) in which the metallb VIP is defined. 
 - Pod network CIDR is 10.128.0.0/23, with a /25 subnet for each server (e.g. 10.128.0.128/25 in the trace below).
 - Kubernetes service network CIDR is 172.30.0.0/25
@@ -2143,11 +2143,6 @@ default via 10.87.104.126 dev br-ex proto dhcp src 10.87.104.24 metric 48
 18: br-ex: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
     link/ether 84:16:0c:ad:e1:fc brd ff:ff:ff:ff:ff:ff promiscuity 1 minmtu 68 maxmtu 65535 
     openvswitch addrgenmode none numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 
-
-[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl list-ports br-ex
-eno12399
-patch-br-ex_fiveg-host-21-node4-to-br-int
-[core@fiveg-host-21-node4 ~]$ 
 
 ```
 
@@ -2203,7 +2198,7 @@ nginx-mlb-l2-service                 LoadBalancer   172.30.0.4     10.131.2.14  
 Let's now inspect the processing of the IP packet. As we will see, OVN behaves differently compared with flannel (previous sections).
 
 
-**Step 1: Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080**
+#### 1. Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080
 
 
 Find the VIP owner by looking at mac address from the external server
@@ -2282,7 +2277,7 @@ We also can see after NAT to the service IP, the packets are forwarded to a link
 172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400
 ```
 
-**Step 2: Inspect packets after reaching the ovs-bridge br-ex after iptables NAT -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**
+#### 2. Check packet transformation up to pod when transiting ovs-bridge br-ex -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**
 
 After iptables DNAT, the packet is now  SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080
 
@@ -2359,11 +2354,58 @@ ii) Run TCPdump sessions and compare
 ```
 
 All in all, we have a new round of translation with both SNAT and DNAT
-- initial packet to VIP:         10.131.2.1.51136 > 10.131.2.14
+- initial packet to VIP:         10.131.2.1.51136 > 10.131.2.14.8080
 - br-ex to Cluster IP:           10.131.2.1.51136 > 172.30.0.4.8080
 - interface to POD:              100.64.0.4.51136 > 10.128.0.205.8080
 
 The pool for SNAT that is in OCP is actually defined in [RFC 6598 - IANA-Reserved IPv4 Prefix for Shared Address Space](https://www.rfc-editor.org/rfc/rfc6598.html). This is the official pool for CGNAT.
+
+#### 3. RHCOP/OVN networking
+
+Let's understand precisely how networking is handled in RHOCP.
+
+This all starts with br-ex which has two ports:
+- eno12399: this is the physical NIC
+- patch-br-ex_fiveg-host-21-node4-to-br-int: this is a connection to another ovs bridge named br-int.
+
+br-int is where most the bridge plumbing happens with: 
+- pod interfaces (e.g. cf857e90ed06295 where backend nginx pods is deployed )
+- Overlay Endpoint (e.g. ovn-577f3e-0 which connects to 10.87.104.21 - host-21-node1 via GENEVE)
+- patch-br-int-to-br-ex_fiveg-host-21-node4: the connectino to br-ex
+
+```
+[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  list-ports br-ex
+eno12399
+patch-br-ex_fiveg-host-21-node4-to-br-int
+[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  list-ifaces br-int
+[...] list of all pod interfaces
+cf857e90ed06295
+[...]
+ovn-577f3e-0
+ovn-6ffbf2-0
+ovn-k8s-mp0
+patch-br-int-to-br-ex_fiveg-host-21-node4
+[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  show
+[...]
+        Port cf857e90ed06295
+            Interface cf857e90ed06295
+[...]
+        Port patch-br-int-to-br-ex_fiveg-host-21-node4
+            Interface patch-br-int-to-br-ex_fiveg-host-21-node4
+                type: patch
+                options: {peer=patch-br-ex_fiveg-host-21-node4-to-br-int}
+[...]
+        Port ovn-577f3e-0
+            Interface ovn-577f3e-0
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.87.104.21"}
+
+[core@fiveg-host-21-node4 ~]$ sudo ip -d  link show dev cf857e90ed06295
+203: cf857e90ed06295@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue master ovs-system state UP mode DEFAULT group default 
+    link/ether 32:b4:21:2e:72:f3 brd ff:ff:ff:ff:ff:ff link-netns 091755c5-bb3f-45b5-a7d7-29382bc25b25 promiscuity 1 minmtu 68 maxmtu 65535 
+    veth 
+    openvswitch_slave addrgenmode eui64 numtxqueues 48 numrxqueues 48 gso_max_size 65536 gso_max_segs 65535 tso_max_size 524280 tso_max_segs 65535 gro_max_size 65536     
+```
 
 
 ## Troubleshooting
