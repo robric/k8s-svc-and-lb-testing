@@ -2203,10 +2203,14 @@ nginx-mlb-l2-service                 LoadBalancer   172.30.0.4     10.131.2.14  
 Let's now inspect the processing of the IP packet. As we will see, OVN behaves differently compared with flannel (previous sections).
 
 
-Step 1: find the metallb VIP owner
+**Step 1: Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080**
+
+
+Find the VIP owner by looking at mac address from the external server
 
 ```
 ##### From an external server check mac 
+
 ec2-user@eksa-cluster:~$ arp -na | grep 131.2
 ? (10.131.2.3) at 84:16:0c:e1:e1:11 [ether] on v.3002
 ? (10.131.2.2) at 84:16:0c:e7:0d:c1 [ether] on v.3002
@@ -2214,13 +2218,15 @@ ec2-user@eksa-cluster:~$ arp -na | grep 131.2
 ? (10.131.2.14) at 84:16:0c:e7:3e:f1 [ether] on v.3002
 ec2-user@eksa-cluster:~$ 
 
-
-===> so this is 84:16:0c:e7:3e:f1 which belongs to 10.131.2.4 (fiveg-host-21-node4). 
+#    ===> so this is 84:16:0c:e7:3e:f1 which belongs to 10.131.2.4 === fiveg-host-21-node4 
+#    Let's sssh to this server to run iptables traces now
+#
 ```
 
-Step 2: Connect to VIP master node and inspect iptables trace during when a session is initiated from the external server (curl 10.131.2.14:8080 with source 10.131.2.1)
+Now let's have a look iptable trace during test from external server "curl 10.131.2.14:8080".
 
 ```
+
 [core@fiveg-host-21-node4 ~]$ sudo iptables -t raw -A PREROUTING -p tcp -m tcp --dport 8080 -j TRACE
 [core@fiveg-host-21-node4 ~]$ sudo nft monitor
 trace id 552cb577 ip raw PREROUTING packet: iif "ens1f1np1.3002" ether saddr 84:16:0c:e7:45:a1 ether daddr 84:16:0c:e7:3e:f1 vlan pcp 0 vlan dei 0 vlan id 3002 ip saddr 10.131.2.1 ip daddr 10.131.2.14 ip dscp 0x04 ip ecn not-ect ip ttl 64 ip id 6310 ip length 60 tcp sport 46368 tcp dport 8080 tcp flags == syn tcp window 64240 
@@ -2255,7 +2261,6 @@ trace id 552cb577 ip nat POSTROUTING policy accept
 
 #  A summary of nat iptables inspection confirms the NAT action visible in the trace. 
 
-
 [core@fiveg-host-21-node4 ~]$ sudo iptables -t nat -L -v
 Chain PREROUTING (policy ACCEPT 0 packets, 0 bytes)
  pkts bytes target     prot opt in     out     source               destination         
@@ -2276,6 +2281,89 @@ We also can see after NAT to the service IP, the packets are forwarded to a link
 [...]
 172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400
 ```
+
+**Step 2: Inspect packets after reaching the ovs-bridge br-ex after iptables NAT -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**
+
+After iptables DNAT, the packet is now  SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080
+
+Before starting, let's first have a look at how packets get transformed when hitting the backend pods by comparing with tcpdump.
+
+```
+
+# i) Find the interface of a backend pod for tcpdump
+
+#
+# Let's take a pod on node4  and run some tcpdump from there. 
+# from oc api client - find a pod on node4 and pick one - => - nginx-lbl2-68879b7cdd-nlgph with ip address 10.128.0.205 -
+#
+
+ec2-user@eksa-cluster:~$ kubectl get pods -o wide | grep node4
+nginx-lbl2-68879b7cdd-nlgph            1/1     Running     0          2d1h    10.128.0.205   fiveg-host-21-node4   <none>           <none>
+nginx-lbl2-68879b7cdd-nqdwk            1/1     Running     1          5d2h    10.128.0.219   fiveg-host-21-node4   <none>           <none>
+ec2-user@eksa-cluster:~$ 
+
+#
+# Find a container id running in this pod  => 0e82ab8e90aee
+#
+
+[core@fiveg-host-21-node4 ~]$ sudo crictl ps | grep nginx-lbl2-68879b7cdd-nlgph
+0e82ab8e90aee       docker.io/library/nginx@sha256:447a8665cc1dab95b1ca778e162215839ccbb9189104c79d7ec3a81e14577add                                              2 days ago          Running             nginx                                         0                   cf857e90ed062       nginx-lbl2-68879b7cdd-nlgph
+[core@fiveg-host-21-node4 ~]$ 
+
+#
+# Find which namespace it binds to => 091755c5-bb3f-45b5-a7d7-29382bc25b25
+#
+
+[core@fiveg-host-21-node4 ~]$ sudo crictl inspect 0e82ab8e90aee | grep -C 1 network
+          {
+            "type": "network",
+            "path": "/var/run/netns/091755c5-bb3f-45b5-a7d7-29382bc25b25"
+[core@fiveg-host-21-node4 ~]$ 
+
+#
+# Now find the interface that connects to the pod => cf857e90ed06295
+#
+
+[core@fiveg-host-21-node4 ~]$ ip -o  link show | grep 091755c5-bb3f-45b5-a7d7-29382bc25b25
+203: cf857e90ed06295@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue master ovs-system state UP mode DEFAULT group default \    link/ether 32:b4:21:2e:72:f3 brd ff:ff:ff:ff:ff:ff link-netns 091755c5-bb3f-45b5-a7d7-29382bc25b25
+[core@fiveg-host-21-node4 ~]$ 
+
+ii) Run TCPdump sessions and compare
+
+#
+# Run two sessions of TCPDUMP:
+#   - a session on br-ex
+#   - a session on the pod interface cf857e90ed06295
+#
+
+#
+# TCPdump excludes some  endpoints since 8080 is in use ---- yes that was a poor choice of port ---
+#
+
+[root@fiveg-host-21-node4 /]# tcpdump -evni  any "port 8080 and not host 10.128.0.130 and not host 10.128.0.142 and not host 10.128.0.216 and not host 10.128.0.133 and not host 10.128.0.215"  
+
+-> initial interface ens1f1np1.3002
+
+12:47:13.941249 ens1f1np1.3002 In  ifindex 12 84:16:0c:e7:45:a1 ethertype IPv4 (0x0800), length 80: (tos 0x10, ttl 64, id 20723, offset 0, flags [DF], proto TCP (6), length 60)
+    10.131.2.1.51136 > 10.131.2.14.webcache: Flags [S], cksum 0x53a4 (correct), seq 1000475908, win 64240, options [mss 1460,sackOK,TS val 410818531 ecr 0,nop,wscale 7], length 0
+
+-> intermediate interface br-ex
+
+12:47:13.941281 br-ex Out ifindex 18 84:16:0c:ad:e1:fc ethertype IPv4 (0x0800), length 80: (tos 0x10, ttl 63, id 20723, offset 0, flags [DF], proto TCP (6), length 60)
+    10.131.2.1.51136 > 172.30.0.4.webcache: Flags [S], cksum 0xb412 (correct), seq 1000475908, win 64240, options [mss 1460,sackOK,TS val 410818531 ecr 0,nop,wscale 7], length 0
+
+-> target cf857e90ed06295 (confirmed --- ok we might have just trust tcpdump too :-) -- )
+
+12:47:13.942351 cf857e90ed06295 Out ifindex 203 0a:58:0a:80:00:81 ethertype IPv4 (0x0800), length 80: (tos 0x10, ttl 61, id 20723, offset 0, flags [DF], proto TCP (6), length 60)
+    100.64.0.4.51136 > 10.128.0.205.webcache: Flags [S], cksum 0xfd27 (correct), seq 1000475908, win 64240, options [mss 1460,sackOK,TS val 410818531 ecr 0,nop,wscale 7], length 0
+```
+
+All in all, we have a new round of translation with both SNAT and DNAT
+- initial packet to VIP:         10.131.2.1.51136 > 10.131.2.14
+- br-ex to Cluster IP:           10.131.2.1.51136 > 172.30.0.4.8080
+- interface to POD:              100.64.0.4.51136 > 10.128.0.205.8080
+
+The pool for SNAT that is in OCP is actually defined in [RFC 6598 - IANA-Reserved IPv4 Prefix for Shared Address Space](https://www.rfc-editor.org/rfc/rfc6598.html). This is the official pool for CGNAT.
 
 
 ## Troubleshooting
