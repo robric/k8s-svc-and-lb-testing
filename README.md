@@ -2064,37 +2064,51 @@ sudo ip route add 5.6.7.8/32 dev ipsec0
 
 This section focuses on openshift, which has specific OVN-dependencies for setting up NAT translations.
 
-
-### Installation
-
-Metallb can be installed following [IBM guidelines](https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/networking/load-balancing-with-metallb#metallb-operator-install). There is nothing special to mention outside this:
-
-*IMPORTANT: IpForwarding configuration setting since OCP 4.14*
-
-To have metallb working with external networks, the cluster must be configured with "ipForwarding: Global". Without this, the VIP is not reachable from any external server.
-
-```
-ec2-user@eksa-cluster:~$ oc get network.operator.openshift.io cluster -o yaml
-apiVersion: operator.openshift.io/v1
-kind: Network
-[...]
-spec:
-  clusterNetwork:
-  - cidr: 10.128.0.0/23
-    hostPrefix: 25
-  defaultNetwork:
-    ovnKubernetesConfig:
-      egressIPConfig: {}
-      gatewayConfig:
-        ipForwarding: Global  <============================= VERY IMPORTANT !
-[...]
-```
-
-More information on this configuration can be found in this [redhat link](https://docs.openshift.com/container-platform/4.14/networking/cluster-network-operator.html?extIdCarryOver=true&sc_cid=701f2000001Css5AAC#nw-operator-cr-cno-object_cluster-network-operator:~:text=host%20networking%20stack.-,ipForwarding,-object)
-
 ### Setup Description:
 
-The cluster is made up 3 nodes:
+The setup is made up 3 nodes and an external server:
+- cluster nodes: fiveg-host-21-nodeX with X={1,3,4}
+- external server: eksa-cluster . This server is used to reach metallb VIP (curl).
+
+Each server is connected to:
+- default k8s network with subnet 10.87.104.0/25)
+- external network with subnet 10.131.2.0/24 
+For more details on networking, see the "Interface, Routing and subnetting overview" section.
+
+```
+            +----------------------------------------------+    
+            |                                              |
+            |                   RHOCP                      |  
+            |                  Cluster                     |    
+            |                                              |   External VM
+            |                                              |   (curl to VIP)
+            | +------------+ +------------+ +------------+ | +------------+
+            | |   host21-  | |   host21-  | |  host21-   | | |   eksa-    | 
+            | |    node1   | |    node3   | |   node4    | | |  cluster   | 
+            | +------------+ +------------+ +------------+ | +------------+
+            | [k8s-if]  |     [k8s-if] |    [k8s-if]  |    |       :  |
+            |   .21     |      .23     |      .24     |    |       :  |  
+            |    :  [ext-if]    :   [ext-if]   :  [ext-if] |       :  |  
+            |    :     .2       :     .3       :     .4    |       : .1  
+            |    :      |       :      |       :      |    |       :  |   
+            |    :      |       :      |       :      |    |       :  |  
+            +----:------|-------:------|-------:------|----+       :  |
+                 :      |       :      |           :  |            :  |  
+                 :      |       :      |           :  |            :  |  
+                 :      |       :      |           :  |            :  |   
+                 :      +=========vlan 3002 (external)+===============+    
+                 :              :  10.131.2.0/24  :                :
+                 :              :                 :                :   
+                 :              :                 :                : 
+                 :              :                 :                : 
+                 :              :                 :                :  
+                 +---------  k8s  network    --+-------------------+ 
+                              10.87.104.0/25       
+
+Convention external interface:
+[ext-if] =  ens1f1np1.3002 (vlan on additional NIC)
+[k8s-if] =  br-ex (ovs bridge)
+```
 
 ```
 ec2-user@eksa-cluster:~$ oc get nodes -o wide
@@ -2107,7 +2121,7 @@ ec2-user@eksa-cluster:~$
 
 Interface, Routing and subnetting overview:
 
-- Openshifts sets-up the kubernetes routing a bridge interface: br-ex, where each node gets an IP from subnet 10.87.104.0/25. br-ex is an ovs-bridge that contains the phyiscal NIC used for the cluster and another "patch" link (this patch actually  connects to an internal bridge (br-int) on which GENEVE ports and POD ports are attached, we'll see that later) 
+- Openshifts sets-up the kubernetes routing a bridge interface: br-ex, where each node gets an IP from subnet 10.87.104.0/25. br-ex is an ovs-bridge that contains the phyiscal NIC used for the cluster and another "patch" link (this patch actually  connects to an internal bridge "br-int" on which  GENEVE ports and POD ports are attached, we'll see that later) 
 - We created an additional network: 10.131.2.0/24 on interface ens1f1np1.3002 (vlan 3002) in which the metallb VIP is defined. 
 - Pod network CIDR is 10.128.0.0/23, with a /25 subnet for each server (e.g. 10.128.0.128/25 in the trace below).
 - Kubernetes service network CIDR is 172.30.0.0/25
@@ -2137,7 +2151,35 @@ patch-br-ex_fiveg-host-21-node4-to-br-int
 
 ```
 
-### metallb service instantiation
+### Metallb Installation
+
+Metallb can be installed following [IBM guidelines](https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/networking/load-balancing-with-metallb#metallb-operator-install). There is nothing special to mention outside this:
+
+*IMPORTANT: IpForwarding configuration setting since OCP 4.14*
+
+To have metallb working with external networks, the cluster must be configured with "ipForwarding: Global". Without this, the VIP is not reachable from any external server.
+
+```
+ec2-user@eksa-cluster:~$ oc get network.operator.openshift.io cluster -o yaml
+apiVersion: operator.openshift.io/v1
+kind: Network
+[...]
+spec:
+  clusterNetwork:
+  - cidr: 10.128.0.0/23
+    hostPrefix: 25
+  defaultNetwork:
+    ovnKubernetesConfig:
+      egressIPConfig: {}
+      gatewayConfig:
+        ipForwarding: Global  <============================= VERY IMPORTANT !
+[...]
+```
+
+More information on this configuration can be found in this [redhat link](https://docs.openshift.com/container-platform/4.14/networking/cluster-network-operator.html?extIdCarryOver=true&sc_cid=701f2000001Css5AAC#nw-operator-cr-cno-object_cluster-network-operator:~:text=host%20networking%20stack.-,ipForwarding,-object)
+
+
+### Metallb service instantiation
 
 #### ExternalTraficPolicy: Cluster
 
