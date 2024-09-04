@@ -2374,6 +2374,10 @@ br-int is where most the bridge plumbing happens with:
 - patch-br-int-to-br-ex_fiveg-host-21-node4: the connectino to br-ex
 
 ```
+#
+# trace logic networking plumbing logic
+#
+
 [core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  list-ports br-ex
 eno12399
 patch-br-ex_fiveg-host-21-node4-to-br-int
@@ -2400,13 +2404,79 @@ patch-br-int-to-br-ex_fiveg-host-21-node4
                 type: geneve
                 options: {csum="true", key=flow, remote_ip="10.87.104.21"}
 
+#
+# note that pod interfaces are ovs-defined veth 
+#
+
 [core@fiveg-host-21-node4 ~]$ sudo ip -d  link show dev cf857e90ed06295
 203: cf857e90ed06295@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue master ovs-system state UP mode DEFAULT group default 
     link/ether 32:b4:21:2e:72:f3 brd ff:ff:ff:ff:ff:ff link-netns 091755c5-bb3f-45b5-a7d7-29382bc25b25 promiscuity 1 minmtu 68 maxmtu 65535 
     veth 
-    openvswitch_slave addrgenmode eui64 numtxqueues 48 numrxqueues 48 gso_max_size 65536 gso_max_segs 65535 tso_max_size 524280 tso_max_segs 65535 gro_max_size 65536     
-```
+    openvswitch_slave addrgenmode eui64 numtxqueues 48 numrxqueues 48 gso_max_size 65536 gso_max_segs 65535 tso_max_size 524280 tso_max_segs 65535 gro_max_size 65536
 
+#
+# 
+#
+
+```
+The following drawing summarizes the findings:
+- Two servers are shown with pods on each server. pod-to-pod reachability between servers is provided by OVN (Openshift SDN). 
+- br-ex for external connectivity to the cluster and physical NIC
+- br-int for cluster-internal connectivity 
+
+```                                                                       
+                                            SERVER host-21-node4       
+            +--------------------------------------------------+       
+            |                                                  |       
+            |                   [br-ex]                        |       
+            |                       |                          |       
+            |                       |                          |       
+            |          +------------|-----------+              |       
+            |          |                        |              |       
+            |[eno12399]|       ovs-bridge       |              |       
+      |-----------------         br-ex          ----------     |       
+      |     |          |                        |        |     |       
+      |     |          |                        |        |     |       
+      |     |          +------------------------+        |     |       
+      |     |                                            |     |       
+      |     |               +------------+               |     |       
+      |     |               | nginx pod  |               |     |       
+      |     |                10.128.0.205             [patch]  |       
+      |     |               +------------+               |     |       
+      |     |                  [eth0]                    |     |       
+      |     |                     |                      |     |       
+      |     |                     | veth                 |     |       
+      |     |                     |                      |     |       
+  underlay  |              [cf857e90ed06295]             |     |       
+ networking |                     |                      |     |       
+      |     |              +------|--------------+       |     |       
+      |     |              |                     |       |     |       
+      |     |[ovn-577f3e-0]|   ovs-bridge        |       |     |       
+      |     |      |--------     br-int          ---------     |       
+      |     |      |       |                     |             |       
+      |     |      |       |                     |             |       
+      |     |      |       +---------------------+             |       
+      |     +------|-------------------------------------------+   
+      |            |                                                
+      |     GENEVE overlay                                                
+      |       networking                    SERVER host-21-node1       
+      |     +------|-------------------------------------------+       
+      |     |      |       +--------------+                    |       
+      -------------|-------|  ovs-bridge  ------|              |       
+            |      |       |    br-ex     |     |              |       
+            |      |       +--------------+  [patch]           |       
+            |      |       +--------------+     |              |       
+            |      ---------  ovs-bridge  |     |              |       
+            |[ovn-xxxxxxxx]|    br-int    ------|              |       
+            |              +-----|--------+                    |       
+            |                    |                             |       
+            |              +-----|-----+                       |       
+            |              | nginx pod |                       |       
+            |               10.128.0.22                        |       
+            |              +-----------+                       |       
+            +--------------------------------------------------+       
+ [patch] = patch-br-int-to-br-ex_fiveg-host-21-node4  
+```
 
 ## Troubleshooting
 
