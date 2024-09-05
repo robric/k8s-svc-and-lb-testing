@@ -2179,12 +2179,48 @@ More information on this configuration can be found in this [redhat link](https:
 
 #### ExternalTraficPolicy: Cluster
 
+The following manifest deploys the topology described below
 
-After the deployment of the manifest, we have the following:
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-mlb-svc-rhocp.yaml
+```
+```
+            +----------------------------------------------+    
+            |                                              |
+            |                   RHOCP                      |  
+            |                  Cluster                     |    
+            |                                              |   External VM
+            |                                              |   (curl to VIP)
+            | +------------+ +------------+ +------------+ | 
+            | |   nginx    | |   nginx    | |   nginx    | |
+            | |    pod     | |    pod     | |    pod     | | +------------+
+            | |            | |            | |            | | |            | 
+            | |   host21-  | |   host21-  | |  host21-   | | |   eksa-    | 
+            | |    node1   | |    node3   | |   node4    | | |  cluster   | 
+            | +------------+ +------------+ +------------+ | +------------+
+            | [k8s-if]  |     [k8s-if] |    [k8s-if]  |    |         |
+            |   .21     |      .23     |      .24     |    |         |  
+            |       [ext-if]        [ext-if]      [ext-if] |         |  
+            |          .2             .3             .4    |        .1  
+            |           |              |              |    |         |   
+            |           |              |              |    |         |  
+            +-----------|--------------|--------------|----+         |
+                        |              |              |              |  
+                        |              |              |              | 
+                        |              |              |              | 
+                   [ ****** VIP = 10.131.2.14:8080 ****** ]          |
+                        |              |              |              |  
+                        |              |              |              |   
+                        +=========vlan 3002 (external)+===============+    
+                                   10.131.2.0/24          
+```
+
+The service topology is as follow:
 - 3 nginx pods in the cluster (ip addresses displayed below)
 - a metallb load balancer server with VIP 10.131.2.14
 - The services also is configured with 172.30.0.4 to cluster IP and port 32529 for nodeport
 
+The pod and service details are the following:
 ```
 ec2-user@eksa-cluster:~$ kubectl get pods -o wide | grep l2
 nginx-lbl2-68879b7cdd-fz8xd       1/1     Running     1          4d4h   10.128.0.22    fiveg-host-21-node1   <none>           <none>
