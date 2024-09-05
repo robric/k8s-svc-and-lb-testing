@@ -2177,7 +2177,7 @@ More information on this configuration can be found in this [redhat link](https:
 
 ### Metallb service instantiation
 
-#### ExternalTraficPolicy: Cluster
+#### Deployment with ExternalTraficPolicy Cluster
 
 The following manifest deploys the topology described below
 
@@ -2217,7 +2217,7 @@ kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing
 
 The service topology is as follow:
 - 3 nginx pods in the cluster (ip addresses displayed below)
-- a metallb load balancer server with VIP 10.131.2.14
+- a metallb load balancer server with VIP 10.131.2.14 (externaltrafficpolicy: Cluster)
 - The services also is configured with 172.30.0.4 to cluster IP and port 32529 for nodeport
 
 The pod and service details are the following:
@@ -2234,8 +2234,133 @@ nginx-mlb-l2-service                 LoadBalancer   172.30.0.4     10.131.2.14  
 
 Let's now inspect the processing of the IP packet. As we will see, OVN behaves differently compared with flannel (previous sections).
 
+#### RHCOP/OVN networking overview
 
-#### 1. Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080
+Let's understand precisely how networking is handled in RHOCP.
+
+First, the packets towads the Cluster IP pool 172.30.0.4 is forwarded  br-ex, which is an ovs bridge.
+
+```
+[core@fiveg-host-21-node4 ~]$ ip route
+[...]
+172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400
+```
+This all starts with br-ex which has two ports:
+- eno12399: this is the physical NIC
+- patch-br-ex_fiveg-host-21-node4-to-br-int: this is a connection to another ovs bridge named br-int.
+
+br-int is where most the bridge plumbing happens with: 
+- pod interfaces (e.g. cf857e90ed06295 where backend nginx pods is deployed )
+- Overlay Endpoint (e.g. ovn-577f3e-0 which connects to 10.87.104.21 - host-21-node1 via GENEVE)
+- patch-br-int-to-br-ex_fiveg-host-21-node4: the connectino to br-ex
+
+```
+#
+# trace logic networking plumbing logic
+#
+
+[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  list-ports br-ex
+eno12399
+patch-br-ex_fiveg-host-21-node4-to-br-int
+[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  list-ifaces br-int
+[...] list of all pod interfaces
+cf857e90ed06295
+[...]
+ovn-577f3e-0
+ovn-6ffbf2-0
+ovn-k8s-mp0
+patch-br-int-to-br-ex_fiveg-host-21-node4
+[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  show
+[...]
+        Port cf857e90ed06295
+            Interface cf857e90ed06295
+[...]
+        Port patch-br-int-to-br-ex_fiveg-host-21-node4
+            Interface patch-br-int-to-br-ex_fiveg-host-21-node4
+                type: patch
+                options: {peer=patch-br-ex_fiveg-host-21-node4-to-br-int}
+[...]
+        Port ovn-577f3e-0
+            Interface ovn-577f3e-0
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.87.104.21"}
+
+#
+# note that pod interfaces are ovs-defined veth 
+#
+
+[core@fiveg-host-21-node4 ~]$ sudo ip -d  link show dev cf857e90ed06295
+203: cf857e90ed06295@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue master ovs-system state UP mode DEFAULT group default 
+    link/ether 32:b4:21:2e:72:f3 brd ff:ff:ff:ff:ff:ff link-netns 091755c5-bb3f-45b5-a7d7-29382bc25b25 promiscuity 1 minmtu 68 maxmtu 65535 
+    veth 
+    openvswitch_slave addrgenmode eui64 numtxqueues 48 numrxqueues 48 gso_max_size 65536 gso_max_segs 65535 tso_max_size 524280 tso_max_segs 65535 gro_max_size 65536
+
+#
+# 
+#
+
+```
+The following drawing summarizes the findings:
+- Two servers are shown with pods on each server. pod-to-pod reachability between servers is provided by OVN (Openshift SDN). 
+- br-ex for external connectivity to the cluster and physical NIC
+- br-int for cluster-internal connectivity 
+
+```                                                                       
+                                            SERVER host-21-node4       
+            +--------------------------------------------------+       
+   |        |                                                  |       
+   |----------10.131.2.4          [br-ex]                      |       
+external    |                       |                          |       
+network     |                       |                          |       
+   |        |             +------------|-----------+           |       
+            |             |                        |           |       
+            |[eno12399]   |       ovs-bridge       |           |       
+      |-------------------+         br-ex          +------     |       
+      |     | 10.87.104.24|                        |     |     |       
+      |     |             |                        |     |     |       
+      |     |             +------------------------+     |     |       
+      |     |                                            |     |       
+      |     |               +------------+               |     |       
+      |     |               | nginx pod  |               |     |       
+      |     |                10.128.0.205             [patch]  |       
+      |     |               +------------+               |     |       
+      |     |                  [eth0]                    |     |       
+      |     |                     |                      |     |       
+      |     |                     | veth                 |     |       
+      |     |                     |                      |     |       
+  underlay  |              [cf857e90ed06295]             |     |       
+ networking |                     |                      |     |       
+      |     |              +------|--------------+       |     |       
+      |     |              |                     |       |     |       
+      |     |[ovn-577f3e-0]|   ovs-bridge        |       |     |       
+      |     |      |--------     br-int          ---------     |       
+      |     |      |       |                     |             |       
+      |     |      |       |                     |             |       
+      |     |      |       +---------------------+             |       
+      |     +------|-------------------------------------------+   
+      |            |                                                
+      |     GENEVE overlay                                                
+      |       networking                    SERVER host-21-node1       
+      |     +------|-------------------------------------------+       
+      |     |      |       +--------------+                    |       
+      -------------|-------|  ovs-bridge  ------|              |       
+            |      |       |    br-ex     |     |              |       
+            |      |       +--------------+  [patch]           |       
+            |      |       +--------------+     |              |       
+            |      ---------  ovs-bridge  |     |              |       
+            |[ovn-xxxxxxxx]|    br-int    ------|              |       
+            |              +-----|--------+                    |       
+            |                    |                             |       
+            |              +-----|-----+                       |       
+            |              | nginx pod |                       |       
+            |               10.128.0.22                        |       
+            |              +-----------+                       |       
+            +--------------------------------------------------+       
+ [patch] = patch-br-int-to-br-ex_fiveg-host-21-node4  
+```
+
+
+#### Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080
 
 
 Find the VIP owner by looking at mac address from the external server
@@ -2397,123 +2522,6 @@ All in all, we have a new round of translation with both SNAT and DNAT
 
 The pool for SNAT that is in OCP is actually defined in [RFC 6598 - IANA-Reserved IPv4 Prefix for Shared Address Space](https://www.rfc-editor.org/rfc/rfc6598.html). This is the official pool for CGNAT.
 
-#### 3. RHCOP/OVN networking
-
-Let's understand precisely how networking is handled in RHOCP.
-
-This all starts with br-ex which has two ports:
-- eno12399: this is the physical NIC
-- patch-br-ex_fiveg-host-21-node4-to-br-int: this is a connection to another ovs bridge named br-int.
-
-br-int is where most the bridge plumbing happens with: 
-- pod interfaces (e.g. cf857e90ed06295 where backend nginx pods is deployed )
-- Overlay Endpoint (e.g. ovn-577f3e-0 which connects to 10.87.104.21 - host-21-node1 via GENEVE)
-- patch-br-int-to-br-ex_fiveg-host-21-node4: the connectino to br-ex
-
-```
-#
-# trace logic networking plumbing logic
-#
-
-[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  list-ports br-ex
-eno12399
-patch-br-ex_fiveg-host-21-node4-to-br-int
-[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  list-ifaces br-int
-[...] list of all pod interfaces
-cf857e90ed06295
-[...]
-ovn-577f3e-0
-ovn-6ffbf2-0
-ovn-k8s-mp0
-patch-br-int-to-br-ex_fiveg-host-21-node4
-[core@fiveg-host-21-node4 ~]$ sudo ovs-vsctl  show
-[...]
-        Port cf857e90ed06295
-            Interface cf857e90ed06295
-[...]
-        Port patch-br-int-to-br-ex_fiveg-host-21-node4
-            Interface patch-br-int-to-br-ex_fiveg-host-21-node4
-                type: patch
-                options: {peer=patch-br-ex_fiveg-host-21-node4-to-br-int}
-[...]
-        Port ovn-577f3e-0
-            Interface ovn-577f3e-0
-                type: geneve
-                options: {csum="true", key=flow, remote_ip="10.87.104.21"}
-
-#
-# note that pod interfaces are ovs-defined veth 
-#
-
-[core@fiveg-host-21-node4 ~]$ sudo ip -d  link show dev cf857e90ed06295
-203: cf857e90ed06295@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue master ovs-system state UP mode DEFAULT group default 
-    link/ether 32:b4:21:2e:72:f3 brd ff:ff:ff:ff:ff:ff link-netns 091755c5-bb3f-45b5-a7d7-29382bc25b25 promiscuity 1 minmtu 68 maxmtu 65535 
-    veth 
-    openvswitch_slave addrgenmode eui64 numtxqueues 48 numrxqueues 48 gso_max_size 65536 gso_max_segs 65535 tso_max_size 524280 tso_max_segs 65535 gro_max_size 65536
-
-#
-# 
-#
-
-```
-The following drawing summarizes the findings:
-- Two servers are shown with pods on each server. pod-to-pod reachability between servers is provided by OVN (Openshift SDN). 
-- br-ex for external connectivity to the cluster and physical NIC
-- br-int for cluster-internal connectivity 
-
-```                                                                       
-                                            SERVER host-21-node4       
-            +--------------------------------------------------+       
-   |        |                                                  |       
-   |----------10.131.2.4          [br-ex]                      |       
-external    |                       |                          |       
-network     |                       |                          |       
-   |        |             +------------|-----------+           |       
-            |             |                        |           |       
-            |[eno12399]   |       ovs-bridge       |           |       
-      |-------------------+         br-ex          +------     |       
-      |     | 10.87.104.24|                        |     |     |       
-      |     |             |                        |     |     |       
-      |     |             +------------------------+     |     |       
-      |     |                                            |     |       
-      |     |               +------------+               |     |       
-      |     |               | nginx pod  |               |     |       
-      |     |                10.128.0.205             [patch]  |       
-      |     |               +------------+               |     |       
-      |     |                  [eth0]                    |     |       
-      |     |                     |                      |     |       
-      |     |                     | veth                 |     |       
-      |     |                     |                      |     |       
-  underlay  |              [cf857e90ed06295]             |     |       
- networking |                     |                      |     |       
-      |     |              +------|--------------+       |     |       
-      |     |              |                     |       |     |       
-      |     |[ovn-577f3e-0]|   ovs-bridge        |       |     |       
-      |     |      |--------     br-int          ---------     |       
-      |     |      |       |                     |             |       
-      |     |      |       |                     |             |       
-      |     |      |       +---------------------+             |       
-      |     +------|-------------------------------------------+   
-      |            |                                                
-      |     GENEVE overlay                                                
-      |       networking                    SERVER host-21-node1       
-      |     +------|-------------------------------------------+       
-      |     |      |       +--------------+                    |       
-      -------------|-------|  ovs-bridge  ------|              |       
-            |      |       |    br-ex     |     |              |       
-            |      |       +--------------+  [patch]           |       
-            |      |       +--------------+     |              |       
-            |      ---------  ovs-bridge  |     |              |       
-            |[ovn-xxxxxxxx]|    br-int    ------|              |       
-            |              +-----|--------+                    |       
-            |                    |                             |       
-            |              +-----|-----+                       |       
-            |              | nginx pod |                       |       
-            |               10.128.0.22                        |       
-            |              +-----------+                       |       
-            +--------------------------------------------------+       
- [patch] = patch-br-int-to-br-ex_fiveg-host-21-node4  
-```
 
 #### 4. Packet handling in br-ex
 
