@@ -6,6 +6,7 @@ This repo focuses on the integration of services in kubernetes from basic cluste
 -  IPSEC integration with metallb load balancer
 -  Metallb and SCTP support
 -  externaltrafficpolicy local/cluster knob for loadbalancer services
+-  RHOCP integration
 
 This page is also:
 - a quick copy-paste source for rapidly bringing up test scenarios.
@@ -2476,6 +2477,82 @@ network     |                       |                          |
             |              +-----------+                       |       
             +--------------------------------------------------+       
  [patch] = patch-br-int-to-br-ex_fiveg-host-21-node4  
+```
+
+#### 4. Packet handling in br-ex
+
+After iptables translation, packets Enter the br-ex bridge thanks to the following route:
+
+```
+[core@fiveg-host-21-node4 ~]$ sudo ip route show 
+172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400 
+```
+We can find the mac address associated with this route
+```
+[core@fiveg-host-21-node4 ~]$ arp -na | grep 169.254.169.4
+? (169.254.169.4) at 0a:58:a9:fe:a9:04 [ether] PERM on br-ex
+[core@fiveg-host-21-node4 ~]$ 
+``` 
+
+```
+sh-5.1# ovn-nbctl list Static_MAC_Binding
+_uuid               : bd1b8111-2356-429c-9b69-3750c83a354a
+ip                  : "169.254.169.4"
+logical_port        : rtoe-GR_fiveg-host-21-node4
+mac                 : "0a:58:a9:fe:a9:04"
+override_dynamic_mac: true
+sh-5.1#  
+sh-5.1#  ovn-nbctl list Logical_Router_Port
+[...]
+_uuid               : 3c9cf92e-712e-431b-b435-d4b0dfbb34c1
+enabled             : []
+external_ids        : {gateway-physical-ip=yes}
+gateway_chassis     : []
+ha_chassis_group    : []
+ipv6_prefix         : []
+ipv6_ra_configs     : {}
+mac                 : "84:16:0c:ad:e1:fc"
+name                : rtoe-GR_fiveg-host-21-node4
+networks            : ["10.87.104.24/25"]
+options             : {}
+peer                : []
+status              : {}
+```
+
+```
+_uuid               : 010cc856-69c7-45f8-9f42-65302807639e
+external_ids        : {"k8s.ovn.org/kind"=Service, "k8s.ovn.org/owner"="default/nginx-mlb-l2-service"}
+health_check        : []
+ip_port_mappings    : {}
+name                : "Service_default/nginx-mlb-l2-service_TCP_cluster"
+options             : {event="false", hairpin_snat_ip="169.254.169.5 fd69::5", neighbor_responder=none, reject="true", skip_snat="false"}
+protocol            : tcp
+selection_fields    : []
+vips                : {"10.131.2.14:8080"="10.128.0.205:8080,10.128.0.219:8080,10.128.0.22:8080", "172.30.0.4:8080"="10.128.0.205:8080,10.128.0.219:8080,10.128.0.22:8080"}
+
+sh-5.1#  ovn-nbctl lr-route-list af13f28e-e34b-427c-80b7-7e5ce1ff71e4
+IPv4 Routes
+Route Table <main>:
+         169.254.169.0/29             169.254.169.4 dst-ip rtoe-GR_fiveg-host-21-node4
+            10.128.0.0/23                100.64.0.1 dst-ip
+                0.0.0.0/0             10.87.104.126 dst-ip rtoe-GR_fiveg-host-21-node4
+sh-5.1#  ovn-nbctl lr-route-list b6bb5c79-f347-42ea-a604-a4f54ab8216c 
+IPv4 Routes
+Route Table <main>:
+               100.64.0.2                100.88.0.2 dst-ip
+               100.64.0.3                100.88.0.3 dst-ip
+               100.64.0.4                100.64.0.4 dst-ip
+            10.128.0.0/25                100.88.0.2 dst-ip
+            10.128.1.0/25                100.88.0.3 dst-ip
+            10.128.0.0/23                100.64.0.4 src-ip
+sh-5.1# 
+
+```
+```
+[core@fiveg-host-21-node4 ~]$ sudo ovs-dpctl  dump-flows | grep  8080
+recirc_id(0x1ac),in_port(5),ct_state(+new-rel+trk),eth(),eth_type(0x0800),ipv4(dst=172.30.0.4,proto=6,frag=no),tcp(dst=8080), packets:0, bytes:0, used:never, actions:hash(l4(0)),recirc(0xdedf4)
+recirc_id(0xdf0a5),dp_hash(0xd/0xf),in_port(5),eth(),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions:ct(commit,zone=14,mark=0xa/0xa,nat(dst=10.128.0.219:8080)),recirc(0xdf09c)
+
 ```
 
 ## Troubleshooting
