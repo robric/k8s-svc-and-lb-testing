@@ -16,7 +16,7 @@ This page is also:
 ## Table of Content
 
 <!-- vscode-markdown-toc -->
-* 1. [Prerequisite](#Prerequisite)
+1. [Prerequisite](#Prerequisite)
 * 2. [VM and Cluster deployment](#VMandClusterdeployment)
 * 3. [ K8s basic service deployment and routing analysis](#K8sbasicservicedeploymentandroutinganalysis)
 	* 3.1. [Bootstraping](#Bootstraping)
