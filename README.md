@@ -2102,7 +2102,7 @@ sudo ip link set ipsec0 up
 sudo ip route add 5.6.7.8/32 dev ipsec0
 ```
 
-### Single pod for IPSEC and SCTP
+### Single pod for IPSEC and SCTP -hostnetwork:false-
 
 This test is just a variation with a pod combining both IPSEC (strongswan) and the sctp server (sctp_test). 
 
@@ -2110,7 +2110,51 @@ The definition VIP logic is working as follow:
 - the VIP for IPSEC relies on metallg (unchanged)
 - the VIP for SCTP is based on adding an address to the eth0 pod interface (no metallb).
 
-This is clearly hacky, however this approach has some benefits:
+The diagram below describes the design:
+
+```
+         vm1                   vm2                   vm3          
++-------------------+ +-------------------+ +-------------------+ 
+|  +-------------+  | |  +-------------+  | |  +-------------+  | 
+|  |     pod     |  | |  |     pod     |  | |  |     pod     |  | 
+|  | ipsec+sctp  |  | |  | ipsec+sctp  |  | |  | ipsec+sctp  |  | 
+|  |   server    |  | |  |   server    |  | |  |   server    |  | 
+|  |             |  | |  |             |  | |  |             |  | 
+|  |             |  | |  |             |  | |  |             |  | 
+|  |    eth0     |  | |  |    eth0     |  | |  |    eth0     |  | 
+|  |  1.2.3.4/32 |  | |  |  1.2.3.4/32 |  | |  |  1.2.3.4/32 |  | 
+|  +------|------+  | |  +------|------+  | |  +------|------+  | 
+|         |         | |         |         | |         |         | 
+|       (cni)       | |       (cni)       | |       (cni)       | 
+|                   | |                   | |                   | 
+|                   | |                   | |                   | 
++---------|---------+ +----------|--------+ +---------|---------+ 
+  ens3.100|.1            ens3.100|            ens3.100|           
+          |                      |                    |           
+          |                      |                    |           
+     +----------------------------------------------------+       
+     |               IPSEC VIP 10.123.123.200             |       
+     +----------------------------------------------------+       
+          |                      |                    |           
+          ---------------------------------------------           
+                        vlan external network                     
+                           10.123.123.0/24                        
+                                 |                                
+                                 |.4                              
+                +---------------------------------+               
+                |                                 |               
+                |  SCTP over IPSEC:               |               
+                |                                 |               
+                |  SCTP SRC=5.6.7.8/32            |               
+                |  SCTP DEST=1.2.3.4/32           |               
+                |                                 |               
+                |  IPSEC SRC=10.123.123.4         |               
+                |  IPSEC DEST=10.123.123.200      |               
+                |                                 |               
+                +---------------------------------+               
+                              vm-ext      
+```
+This is clearly hacky (and requires NET_ADMIN), however this approach has some benefits:
 - Relies on dedicated pod with  use of hostnetwork
 - IPSEC working with policies with no need for route orchestration
 
@@ -2118,6 +2162,38 @@ The manifest can be found [here](source/sctpserver-with-ipsec.yaml). Here is the
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctpserver-with-ipsec.yaml
+```
+
+SCTP and pings from external VM just work fine.
+
+```(console)
+ubuntu@vm-ext:~$ ping 1.2.3.4 -I 5.6.7.8
+PING 1.2.3.4 (1.2.3.4) from 5.6.7.8 : 56(84) bytes of data.
+64 bytes from 1.2.3.4: icmp_seq=1 ttl=64 time=0.439 ms
+64 bytes from 1.2.3.4: icmp_seq=2 ttl=64 time=0.347 ms
+64 bytes from 1.2.3.4: icmp_seq=3 ttl=64 time=0.386 ms
+ubuntu@vm-ext:~$ sctp_test -H 5.6.7.8  -h 1.2.3.4 -p 10000 -s -x1
+remote:addr=1.2.3.4, port=webmin, family=2
+local:addr=5.6.7.8, port=0, family=2
+seed = 1730986431
+
+Starting tests...
+        socket(SOCK_SEQPACKET, IPPROTO_SCTP)  ->  sk=3
+        bind(sk=3, [a:5.6.7.8,p:0])  --  attempt 1/10
+Client: Sending packets.(1/1)
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=728983727
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1425489239
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=357345221
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=561134118
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=108735489
+        sendmsg(sk=3, assoc=0)    1 bytes.
+          SNDRCV(stream=0 flags=0x1 ppid=1090803534
+        sendmsg(sk=3, assoc=0)    1 bytes.
 ```
 
 
