@@ -352,9 +352,9 @@ ubuntu@vm1:~$
 ```
 Service name resolution works as any kubernetes: the key/values are stored in the kube DB (e.g. etcd) and sent to coredns upon changes.
 
-###  3.4. <a name='ServiceRoutingDetails'></a>Service Routing Details
+###  3.4. <a name='ServiceRoutingDetails'></a>Cluster IP Service Routing Details
 
-This section describes the logic for routing kubernetes services which is extensively based on NAT.
+This section describes the logic for routing kubernetes default services(Cluster IP) which is extensively based on NAT. The implementation is CNI-dependent: the description presented here applies for flannel (k3s default CNI). 
 In summary:
 - after name resolution, the trafic is sent by test-pod to the nginx-service IP address 10.43.180.238
 - upon reception on veth interface at host side, DNAT is enforced to translate the service address to any of the pod IP.
@@ -467,7 +467,9 @@ ubuntu@vm1:~$
 # 
 ```
 
-###  3.5. <a name='Nodeport'></a>Nodeport 
+###  3.5. <a name='Nodeport'></a>Nodeport Service Routing Details
+
+This section describes the logic for the routing of a kubernetes nodeport service. The implementation is CNI-dependent: the description presented here applies for flannel (k3s default CNI). 
 
 Deploy nodeport service with:
 - nodeport port: 30000
@@ -2099,6 +2101,24 @@ sudo ip link add ipsec0 type xfrm if_id 123
 sudo ip link set ipsec0 up
 sudo ip route add 5.6.7.8/32 dev ipsec0
 ```
+
+### Single pod for IPSEC and SCTP
+
+This test is just a variation with a pod combining both IPSEC (strongswan) and the sctp server (sctp_test). 
+
+The definition VIP logic is working as follow:
+- the VIP for IPSEC relies on metallg (unchanged)
+- the VIP for SCTP is based on adding an address to the eth0 pod interface (no metallb).
+
+This is clearly hacky, however this approach has some benefits:
+- Relies on dedicated pod with  use of hostnetwork
+- IPSEC working with policies with no need for route orchestration
+
+The manifest can be found [here](source/sctpserver-with-ipsec.yaml). Here is the copy-paste for direct application in kubernetes.
+
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctpserver-with-ipsec.yaml
+``` 
 
 
 ##  5. <a name='OpenshiftIntegration'></a>Openshift Integration

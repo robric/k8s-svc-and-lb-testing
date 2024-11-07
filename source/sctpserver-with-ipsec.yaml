@@ -3,6 +3,21 @@ kind: ConfigMap
 metadata:
   name: ipsec-config
 data:
+  start.sh: |
+    #!/bin/sh
+    echo "Installing Strongswan packages..."
+    apt-get update && apt-get install -y strongswan strongswan-swanctl
+    cp /etc/swanctl/swanctl.conf-tmp /etc/swanctl/swanctl.conf
+    cp /etc/strongswan.conf-tmp /etc/strongswan.conf
+    echo "Starting Strongswan..."
+    ipsec start
+    sleep 5
+    swanctl --load-all
+    echo "Hack: adding SCTP VIP on eth0..."
+    ip addr add 1.2.3.4/32 dev eth0
+    sleep 2
+    echo "We're done !"
+    tail -f /dev/null
   swanctl.conf: |-
     connections {
       tunnel-accept-any {
@@ -18,6 +33,8 @@ data:
         }
         children {
           net-net {
+            if_id_out = 123
+            if_id_in = 123
             mode = tunnel
             local_ts  = 0.0.0.0/0
             remote_ts = 0.0.0.0/0
@@ -41,7 +58,7 @@ data:
 
   strongswan.conf: |-
     charon {
-      install_routes = no
+      install_routes = yes
       send_vendor_id = yes
       dns1 = 8.8.8.8
       dns2 = 8.8.4.4
@@ -54,44 +71,31 @@ data:
         }
       }
 
-      # two defined file loggers
       filelog {
         charon {
-            # path to the log file, specify this as section name in versions prior to 5.7.0
             path = /var/log/charon.log
-            # add a timestamp prefix
             time_format = %b %e %T
-            # prepend connection name, simplifies grepping
             ike_name = yes
-            # overwrite existing files
             append = no
-            # increase default loglevel for all daemon subsystems
             default = 2
-            # flush each line to disk
             flush_line = yes
         }
         stderr {
-            # more detailed loglevel for a specific subsystem, overriding the
-            # default loglevel.
             ike = 2
             knl = 3
             net = 3
         }
       }
-      # and two loggers using syslog
       syslog {
-          # prefix for each log message
           identifier = charon-custom
-          # use default settings to log to the LOG_DAEMON facility
           daemon {
           }
-          # very minimalistic IKE auditing logs to LOG_AUTHPRIV
           auth {
               default = -1
               ike = 0
           }
-        }
       }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -111,15 +115,7 @@ spec:
       - name: strongswan
         image: ubuntu:22.04
         command: ["/bin/sh"]
-        args: ["-c", "apt-get update && \
-         apt-get install -y strongswan && \
-         apt-get install -y strongswan-swanctl && \
-         cp /etc/swanctl/swanctl.conf-tmp /etc/swanctl/swanctl.conf && \
-         cp /etc/strongswan.conf-tmp /etc/strongswan.conf && \
-         ipsec start && \
-         sleep 5 && \
-         swanctl --load-all && \
-         tail -f /dev/null"]
+        args: ["/start.sh"]
         securityContext:
           privileged: true
           runAsUser: 0
@@ -132,11 +128,15 @@ spec:
             name: vpn-ike
             protocol: UDP
         volumeMounts:
-        - mountPath: /etc/swanctl/swanctl.conf-tmp
-          name: config
+        - name: config
+          mountPath: /start.sh
+          subPath: start.sh
+          readOnly: true
+        - name: config
+          mountPath: /etc/swanctl/swanctl.conf-tmp
           subPath: swanctl.conf
-        - mountPath: /etc/strongswan.conf-tmp
-          name: config
+        - name: config
+          mountPath: /etc/strongswan.conf-tmp
           subPath: strongswan.conf
         env:
           - name: DEBIAN_FRONTEND
@@ -148,14 +148,9 @@ spec:
           - containerPort: 9999
             protocol: SCTP
       volumes:
-      - configMap:
-          items:
-          - key: swanctl.conf
-            path: swanctl.conf
-          - key: strongswan.conf
-            path: strongswan.conf
+      - name: config
+        configMap:
           name: ipsec-config
-        name: config
       restartPolicy: Always
 ---
 apiVersion: v1
