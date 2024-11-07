@@ -2118,7 +2118,7 @@ The manifest can be found [here](source/sctpserver-with-ipsec.yaml). Here is the
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctpserver-with-ipsec.yaml
-``` 
+```
 
 
 ##  5. <a name='OpenshiftIntegration'></a>Openshift Integration

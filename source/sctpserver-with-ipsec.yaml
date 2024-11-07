@@ -33,8 +33,6 @@ data:
         }
         children {
           net-net {
-            if_id_out = 123
-            if_id_in = 123
             mode = tunnel
             local_ts  = 0.0.0.0/0
             remote_ts = 0.0.0.0/0
