@@ -13,41 +13,43 @@ This page is also:
 - an educational source to share how things work under the the hood when interfacing with diverse people... Indeed, kubernetes networking logic is actually not so well documented.
 - a personal cheat sheet for k8s for fast refresh.
 
-## Table of Content
+##  1. <a name='TableofContent'></a>Table of Content
 
 <!-- vscode-markdown-toc -->
-1. [Prerequisite](#Prerequisite)
-2. [VM and Cluster deployment](#VMandClusterdeployment)
-3. [ K8s basic service deployment and routing analysis](#K8sbasicservicedeploymentandroutinganalysis)
-	* 3.1. [Bootstraping](#Bootstraping)
-	* 3.2. [How does a pod reaches a services ?](#Howdoesapodreachesaservices)
-	* 3.3. [A glance at coredns](#Aglanceatcoredns)
-	* 3.4. [Service Routing Details](#ServiceRoutingDetails)
-	* 3.5. [Nodeport](#Nodeport)
-4. [Metalb Integration on 3 node cluster](#MetalbIntegrationon3nodecluster)
-	* 4.1. [Target Design](#TargetDesign)
-	* 4.2. [Metalb Deployment](#MetalbDeployment)
-	* 4.3. [Test in L2 mode](#TestinL2mode)
-		* 4.3.1. [Deployment with 3 pods and Single VIP in the external network](#Deploymentwith3podsandSingleVIPintheexternalnetwork)
-		* 4.3.2. ["in-cluster" trafic to external VIP 10.123.123.100](#in-clustertrafictoexternalVIP10.123.123.100)
-		* 4.3.3. [Test of  "externalTrafficPolicy: Local" with 6 pods](#TestofexternalTrafficPolicy:Localwith6pods)
-		* 4.3.4. [metallb deployment in hostnetwork](#metallbdeploymentinhostnetwork)
-		* 4.3.5. [Source NAT (masquerade) enforcement for incoming trafic in default mode](#SourceNATmasqueradeenforcementforincomingtraficindefaultmode)
-		* 4.3.6. [External Routing from within pods](#ExternalRoutingfromwithinpods)
-		* 4.3.7. [Non fate-sharing deployment with metallb and  multiple VIPs](#Nonfate-sharingdeploymentwithmetallbandmultipleVIPs)
-		* 4.3.8. [Metallb compliance with SCTP](#MetallbcompliancewithSCTP)
-		* 4.3.9. [Metallb with IPSEC (strongswan) and SCTP](#MetallbwithIPSECstrongswanandSCTP)
-5. [Openshift Integration](#OpenshiftIntegration)
-	* 5.1. [Background](#Background)
-	* 5.2. [Setup Description:](#SetupDescription:)
-	* 5.3. [Metallb Installation](#MetallbInstallation)
-	* 5.4. [Metallb service instantiation](#Metallbserviceinstantiation)
-		* 5.4.1. [Deployment with ExternalTraficPolicy Cluster](#DeploymentwithExternalTraficPolicyCluster)
-		* 5.4.2. [RHCOP/OVN networking overview](#RHCOPOVNnetworkingoverview)
-		* 5.4.3. [Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080](#InspectiptablesduringwhenasessiontoVIPisinitiatedfromtheexternalserver-----SRC10.131.2.3.XXXXXDST10.131.2.14.8080)
-		* 5.4.4. [2. Check packet transformation up to pod when transiting ovs-bridge br-ex -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**](#Checkpackettransformationuptopodwhentransitingovs-bridgebr-ex-----SRC10.131.2.3.XXXXXDST172.30.0.4.8080)
-		* 5.4.5. [4. Packet handling in br-ex](#Packethandlinginbr-ex)
-6. [Troubleshooting](#Troubleshooting)
+1. [Table of Content](#TableofContent)
+2. [Prerequisites](#Prerequisites)
+3. [VM and Cluster deployment](#VMandClusterdeployment)
+4. [ K8s basic service deployment and routing analysis](#K8sbasicservicedeploymentandroutinganalysis)
+	* 4.1. [Bootstraping](#Bootstraping)
+	* 4.2. [How does a pod reaches a services ?](#Howdoesapodreachesaservices)
+	* 4.3. [A glance at coredns](#Aglanceatcoredns)
+	* 4.4. [Cluster IP Service Routing Details](#ClusterIPServiceRoutingDetails)
+	* 4.5. [Nodeport Service Routing Details](#NodeportServiceRoutingDetails)
+5. [Metalb Integration on 3 node cluster](#MetalbIntegrationon3nodecluster)
+	* 5.1. [Target Design](#TargetDesign)
+	* 5.2. [Metalb Deployment](#MetalbDeployment)
+	* 5.3. [Test in L2 mode](#TestinL2mode)
+		* 5.3.1. [Deployment with 3 pods and Single VIP in the external network](#Deploymentwith3podsandSingleVIPintheexternalnetwork)
+		* 5.3.2. ["in-cluster" trafic to external VIP 10.123.123.100](#in-clustertrafictoexternalVIP10.123.123.100)
+		* 5.3.3. [Test of  "externalTrafficPolicy: Local" with 6 pods](#TestofexternalTrafficPolicy:Localwith6pods)
+		* 5.3.4. [metallb deployment in hostnetwork](#metallbdeploymentinhostnetwork)
+		* 5.3.5. [Source NAT (masquerade) enforcement for incoming trafic in default mode](#SourceNATmasqueradeenforcementforincomingtraficindefaultmode)
+		* 5.3.6. [External Routing from within pods](#ExternalRoutingfromwithinpods)
+		* 5.3.7. [Non fate-sharing deployment with metallb and  multiple VIPs](#Nonfate-sharingdeploymentwithmetallbandmultipleVIPs)
+		* 5.3.8. [Metallb compliance with SCTP](#MetallbcompliancewithSCTP)
+		* 5.3.9. [Metallb with IPSEC (strongswan) and SCTP](#MetallbwithIPSECstrongswanandSCTP)
+	* 5.4. [Single pod for IPSEC and SCTP -hostnetwork:false-](#SinglepodforIPSECandSCTP-hostnetwork:false-)
+6. [Openshift Integration](#OpenshiftIntegration)
+	* 6.1. [Background](#Background)
+	* 6.2. [Setup Description:](#SetupDescription:)
+	* 6.3. [Metallb Installation](#MetallbInstallation)
+	* 6.4. [Metallb service instantiation](#Metallbserviceinstantiation)
+		* 6.4.1. [Deployment with ExternalTraficPolicy Cluster](#DeploymentwithExternalTraficPolicyCluster)
+		* 6.4.2. [RHCOP/OVN networking overview](#RHCOPOVNnetworkingoverview)
+		* 6.4.3. [Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080](#InspectiptablesduringwhenasessiontoVIPisinitiatedfromtheexternalserver-----SRC10.131.2.3.XXXXXDST10.131.2.14.8080)
+		* 6.4.4. [2. Check packet transformation up to pod when transiting ovs-bridge br-ex -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**](#Checkpackettransformationuptopodwhentransitingovs-bridgebr-ex-----SRC10.131.2.3.XXXXXDST172.30.0.4.8080)
+		* 6.4.5. [4. Packet handling in br-ex](#Packethandlinginbr-ex)
+7. [Troubleshooting](#Troubleshooting)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -55,13 +57,13 @@ This page is also:
 	/vscode-markdown-toc-config -->
 <!-- /vscode-markdown-toc -->
 
-##  1. <a name='Prerequisite'></a>Prerequisites
+##  2. <a name='Prerequisites'></a>Prerequisites
 
 I just start with an ubuntu server with:
 - multipass installed (by default on ubuntu)
 - a keypair in .ssh/ (id_rsa.pub) so we can simply access VMs
 
-##  2. <a name='VMandClusterdeployment'></a>VM and Cluster deployment 
+##  3. <a name='VMandClusterdeployment'></a>VM and Cluster deployment 
 
 The testings are based on a deployment of 4 VMs via multipass and additional networking.
 - 1 Cluster made up of 3 vms (k3s).
@@ -142,9 +144,9 @@ vm2    Ready    <none>                 22h   v1.29.5+k3s1
 ubuntu@vm1:~$ 
 ```
 
-##  3. <a name='K8sbasicservicedeploymentandroutinganalysis'></a> K8s basic service deployment and routing analysis
+##  4. <a name='K8sbasicservicedeploymentandroutinganalysis'></a> K8s basic service deployment and routing analysis
 
-###  3.1. <a name='Bootstraping'></a>Bootstraping
+###  4.1. <a name='Bootstraping'></a>Bootstraping
 
 Let's start with the creation of a test pod netshoot (https://github.com/nicolaka/netshoot). This is a great troubleshooting container for exploring networking.
 ```
@@ -172,7 +174,7 @@ nginx-deployment-7c79c4bf97-5j5bv   1/1     Running   0          22h     10.42.1
 test-pod                            1/1     Running   0          4m35s   10.42.1.4   vm2    <none>           <none>
 ubuntu@vm1:~$
 ```
-###  3.2. <a name='Howdoesapodreachesaservices'></a>How does a pod reaches a services ?
+###  4.2. <a name='Howdoesapodreachesaservices'></a>How does a pod reaches a services ?
 Now let's check what happens when a pods reaches a service. Here *test-pod* reaches the *nginx-service*.
 
 ```console
@@ -253,7 +255,7 @@ test-pod:~# tcpdump -vni  eth0
 #
 ```
 
-###  3.3. <a name='Aglanceatcoredns'></a>A glance at coredns  
+###  4.3. <a name='Aglanceatcoredns'></a>A glance at coredns  
 coredns is started via configmap which has the kube node IPs (here vm1-3). The service name resolution are not stored there since cm this would be highly unpractical: cm are ok for data that permits to start containers with appropriate parameters but not for data that requires to be updated at runtime. 
 
 ```console
@@ -352,7 +354,7 @@ ubuntu@vm1:~$
 ```
 Service name resolution works as any kubernetes: the key/values are stored in the kube DB (e.g. etcd) and sent to coredns upon changes.
 
-###  3.4. <a name='ServiceRoutingDetails'></a>Cluster IP Service Routing Details
+###  4.4. <a name='ClusterIPServiceRoutingDetails'></a>Cluster IP Service Routing Details
 
 This section describes the logic for routing kubernetes default services(Cluster IP) which is extensively based on NAT. The implementation is CNI-dependent: the description presented here applies for flannel (k3s default CNI). 
 In summary:
@@ -467,7 +469,7 @@ ubuntu@vm1:~$
 # 
 ```
 
-###  3.5. <a name='Nodeport'></a>Nodeport Service Routing Details
+###  4.5. <a name='NodeportServiceRoutingDetails'></a>Nodeport Service Routing Details
 
 This section describes the logic for the routing of a kubernetes nodeport service. The implementation is CNI-dependent: the description presented here applies for flannel (k3s default CNI). 
 
@@ -568,9 +570,9 @@ KUBE-SEP-6BQ3QHB6G4YIKPPI  all  --  anywhere             anywhere             /*
 KUBE-SEP-746QLTYFWXTG2Q66  all  --  anywhere             anywhere             /* default/nginx-np-service -> 10.42.2.5:8080 */
 ubuntu@vm2:~$ 
 ```
-##  4. <a name='MetalbIntegrationon3nodecluster'></a>Metalb Integration on 3 node cluster
+##  5. <a name='MetalbIntegrationon3nodecluster'></a>Metalb Integration on 3 node cluster
 
-###  4.1. <a name='TargetDesign'></a>Target Design
+###  5.1. <a name='TargetDesign'></a>Target Design
 
 We're now using the external interface to the current networking thanks to a vlan (vlan 100).
 
@@ -603,7 +605,7 @@ This should be there after deployment, but in case this has been lost (reboot), 
 curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/external-net.sh | sh
 ```
 
-###  4.2. <a name='MetalbDeployment'></a>Metalb Deployment
+###  5.2. <a name='MetalbDeployment'></a>Metalb Deployment
 
 We'll use info from https://metallb.universe.tf/installation. We also choose the k8s/FRR version because we're a bunch of network nerds.
 To deploy metalb, just apply the following manifest in master (vm1):
@@ -611,9 +613,9 @@ To deploy metalb, just apply the following manifest in master (vm1):
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-frr-k8s.yaml
 ```
 
-###  4.3. <a name='TestinL2mode'></a>Test in L2 mode
+###  5.3. <a name='TestinL2mode'></a>Test in L2 mode
 
-####  4.3.1. <a name='Deploymentwith3podsandSingleVIPintheexternalnetwork'></a>Deployment with 3 pods and Single VIP in the external network
+####  5.3.1. <a name='Deploymentwith3podsandSingleVIPintheexternalnetwork'></a>Deployment with 3 pods and Single VIP in the external network
 
 We want to expose a dedicated load balancer IP=10.123.123.100 outside the cluster thanks to the external vlan.
 
@@ -760,7 +762,7 @@ KUBE-SERVICES -d 10.123.123.100/32 -p tcp --dport 80 -------|
 ```
 
 
-####  4.3.2. <a name='in-clustertrafictoexternalVIP10.123.123.100'></a>"in-cluster" trafic to external VIP 10.123.123.100
+####  5.3.2. <a name='in-clustertrafictoexternalVIP10.123.123.100'></a>"in-cluster" trafic to external VIP 10.123.123.100
 
 It is interesting to understand what happens when trafic is sent to the VIP from within the cluster.
 Indeed vm1 has ARP entry 10.123.123.100 for vm2... So it is tempting to say that that the request may be sent to VM2... but no it won't !!! iptables will intercept it.
@@ -815,7 +817,7 @@ ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
  
 ```
 
-####  4.3.3. <a name='TestofexternalTrafficPolicy:Localwith6pods'></a>Test of  "externalTrafficPolicy: Local" with 6 pods 
+####  5.3.3. <a name='TestofexternalTrafficPolicy:Localwith6pods'></a>Test of  "externalTrafficPolicy: Local" with 6 pods 
 
 We're slightly changing the previous and add some replicas (6) so we can check the load balancing within a node.
 
@@ -963,7 +965,7 @@ ubuntu@vm1:~$ kubectl exec -it test-pod -- curl 10.123.123.100
  
 ubuntu@vm1:~$
 ```
-####  4.3.4. <a name='metallbdeploymentinhostnetwork'></a>metallb deployment in hostnetwork
+####  5.3.4. <a name='metallbdeploymentinhostnetwork'></a>metallb deployment in hostnetwork
 
 The following manifest deploys 3 pods in hostnetwork, together with VIP 10.123.123.102 in the external network via metallb.
 
@@ -1020,7 +1022,7 @@ The change is related to KUBE-SEP instantiation with DNAT happens to node:8080 a
 This is business as usual.
 
 
-####  4.3.5. <a name='SourceNATmasqueradeenforcementforincomingtraficindefaultmode'></a>Source NAT (masquerade) enforcement for incoming trafic in default mode
+####  5.3.5. <a name='SourceNATmasqueradeenforcementforincomingtraficindefaultmode'></a>Source NAT (masquerade) enforcement for incoming trafic in default mode
 
 There is a subtle behavior change when playing with externalTrafficPolicy related to the enforcment of SNAT:
 - externalTrafficPolicy: Cluster (default)
@@ -1103,7 +1105,7 @@ Chain KUBE-EXT-W47NQ5DDJKUWFTVY (2 references)
 ubuntu@vm2:~$  
 ``` 
 
-####  4.3.6. <a name='ExternalRoutingfromwithinpods'></a>External Routing from within pods
+####  5.3.6. <a name='ExternalRoutingfromwithinpods'></a>External Routing from within pods
 
 This is where things gets a bit more complicated: assume pod can be used to forward traffic (e.g. the pod terminates a Tunnel like IPSEC). We have sources, which raises concerns on how the trafic is routed back. 
 
@@ -1206,7 +1208,7 @@ root@vm1:/home/ubuntu# curl 10.123.123.100 --interface 11.11.11.11
 root@vm1:/home/ubuntu# 
 ```
 
-####  4.3.7. <a name='Nonfate-sharingdeploymentwithmetallbandmultipleVIPs'></a>Non fate-sharing deployment with metallb and  multiple VIPs
+####  5.3.7. <a name='Nonfate-sharingdeploymentwithmetallbandmultipleVIPs'></a>Non fate-sharing deployment with metallb and  multiple VIPs
 
 Here we're deploying a slightly more complex setup to expose 2 Metalb VIPs, while making sure there is no zone sharing.
 - Two zone labels for computes: vm1 and vm2 in zone1 and vm3 in zone2.
@@ -1404,7 +1406,7 @@ root@fiveg-host-24-node4:~#
 
 ```
 
-####  4.3.8. <a name='MetallbcompliancewithSCTP'></a>Metallb compliance with SCTP
+####  5.3.8. <a name='MetallbcompliancewithSCTP'></a>Metallb compliance with SCTP
 
 Metallb works in conjunction with sctp (after this is a control plane)
 
@@ -1527,7 +1529,7 @@ ubuntu@vm3:~$
 CONCLUSION: *We're getting decent statistical distribution of the session on all pods.* . It seems we're not using ipvs (looks like a complex change in k3s unfortunately :-(), since ipvs can do round robin. 
 
 
-####  4.3.9. <a name='MetallbwithIPSECstrongswanandSCTP'></a>Metallb with IPSEC (strongswan) and SCTP
+####  5.3.9. <a name='MetallbwithIPSECstrongswanandSCTP'></a>Metallb with IPSEC (strongswan) and SCTP
 
 ##### TLDR - Test Results Summary
 
@@ -2102,7 +2104,7 @@ sudo ip link set ipsec0 up
 sudo ip route add 5.6.7.8/32 dev ipsec0
 ```
 
-### Single pod for IPSEC and SCTP -hostnetwork:false-
+###  5.4. <a name='SinglepodforIPSECandSCTP-hostnetwork:false-'></a>Single pod for IPSEC and SCTP -hostnetwork:false-
 
 This test is just a variation with a pod combining both IPSEC (strongswan) and the sctp server (sctp_test). 
 
@@ -2197,13 +2199,13 @@ Client: Sending packets.(1/1)
 ```
 
 
-##  5. <a name='OpenshiftIntegration'></a>Openshift Integration
+##  6. <a name='OpenshiftIntegration'></a>Openshift Integration
 
-###  5.1. <a name='Background'></a>Background
+###  6.1. <a name='Background'></a>Background
 
 This section focuses on openshift, which has specific OVN-dependencies for setting up NAT translations.
 
-###  5.2. <a name='SetupDescription:'></a>Setup Description:
+###  6.2. <a name='SetupDescription:'></a>Setup Description:
 
 The setup is made up 3 nodes and an external server:
 - cluster nodes: fiveg-host-21-nodeX with X={1,3,4}
@@ -2285,7 +2287,7 @@ default via 10.87.104.126 dev br-ex proto dhcp src 10.87.104.24 metric 48
 
 ```
 
-###  5.3. <a name='MetallbInstallation'></a>Metallb Installation
+###  6.3. <a name='MetallbInstallation'></a>Metallb Installation
 
 Metallb can be installed following [IBM guidelines](https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/networking/load-balancing-with-metallb#metallb-operator-install). There is nothing special to mention outside this:
 
@@ -2313,9 +2315,9 @@ spec:
 More information on this configuration can be found in this [redhat link](https://docs.openshift.com/container-platform/4.14/networking/cluster-network-operator.html?extIdCarryOver=true&sc_cid=701f2000001Css5AAC#nw-operator-cr-cno-object_cluster-network-operator:~:text=host%20networking%20stack.-,ipForwarding,-object)
 
 
-###  5.4. <a name='Metallbserviceinstantiation'></a>Metallb service instantiation
+###  6.4. <a name='Metallbserviceinstantiation'></a>Metallb service instantiation
 
-####  5.4.1. <a name='DeploymentwithExternalTraficPolicyCluster'></a>Deployment with ExternalTraficPolicy Cluster
+####  6.4.1. <a name='DeploymentwithExternalTraficPolicyCluster'></a>Deployment with ExternalTraficPolicy Cluster
 
 The following manifest deploys the topology described below
 
@@ -2372,7 +2374,7 @@ nginx-mlb-l2-service                 LoadBalancer   172.30.0.4     10.131.2.14  
 
 Let's now inspect the processing of the IP packet. As we will see, OVN behaves differently compared with flannel (previous sections).
 
-####  5.4.2. <a name='RHCOPOVNnetworkingoverview'></a>RHCOP/OVN networking overview
+####  6.4.2. <a name='RHCOPOVNnetworkingoverview'></a>RHCOP/OVN networking overview
 
 Let's understand precisely how networking is handled in RHOCP.
 
@@ -2498,7 +2500,7 @@ network     |                       |                          |
 ```
 
 
-####  5.4.3. <a name='InspectiptablesduringwhenasessiontoVIPisinitiatedfromtheexternalserver-----SRC10.131.2.3.XXXXXDST10.131.2.14.8080'></a>Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080
+####  6.4.3. <a name='InspectiptablesduringwhenasessiontoVIPisinitiatedfromtheexternalserver-----SRC10.131.2.3.XXXXXDST10.131.2.14.8080'></a>Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080
 
 
 Find the VIP owner by looking at mac address from the external server
@@ -2577,7 +2579,7 @@ We also can see after NAT to the service IP, the packets are forwarded to a link
 172.30.0.0/25 via 169.254.169.4 dev br-ex mtu 1400
 ```
 
-####  5.4.4. <a name='Checkpackettransformationuptopodwhentransitingovs-bridgebr-ex-----SRC10.131.2.3.XXXXXDST172.30.0.4.8080'></a>2. Check packet transformation up to pod when transiting ovs-bridge br-ex -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**
+####  6.4.4. <a name='Checkpackettransformationuptopodwhentransitingovs-bridgebr-ex-----SRC10.131.2.3.XXXXXDST172.30.0.4.8080'></a>2. Check packet transformation up to pod when transiting ovs-bridge br-ex -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**
 
 After iptables DNAT, the packet is now  SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080
 
@@ -2661,7 +2663,7 @@ All in all, we have a new round of translation with both SNAT and DNAT
 The pool for SNAT that is in OCP is actually defined in [RFC 6598 - IANA-Reserved IPv4 Prefix for Shared Address Space](https://www.rfc-editor.org/rfc/rfc6598.html). This is the official pool for CGNAT.
 
 
-####  5.4.5. <a name='Packethandlinginbr-ex'></a>4. Packet handling in br-ex
+####  6.4.5. <a name='Packethandlinginbr-ex'></a>4. Packet handling in br-ex
 
 After iptables translation, packets Enter the br-ex bridge thanks to the following route:
 
@@ -2737,7 +2739,7 @@ recirc_id(0xdf0a5),dp_hash(0xd/0xf),in_port(5),eth(),eth_type(0x0800),ipv4(frag=
 
 ```
 
-##  6. <a name='Troubleshooting'></a>Troubleshooting
+##  7. <a name='Troubleshooting'></a>Troubleshooting
 
 Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
 
