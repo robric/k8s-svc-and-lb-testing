@@ -14,6 +14,7 @@ data:
     sleep 5
     swanctl --load-all
     echo "Enforcing SNAT Masquerade"
+    apt-get install -y iptables
     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
     echo "We're done !"
     tail -f /dev/null
