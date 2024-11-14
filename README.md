@@ -115,7 +115,7 @@ External VM:
 ```
 To deploy this, just run the following command. It will deploy the network plumbing and vms.
 ```
-curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/deploy.sh | sh
+curl -sSL https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/deploy.sh | sh
 ```
 You'll get the 4 VMs with kubernetes running (k3s inside)
 ```console
@@ -156,7 +156,7 @@ kubectl run test-pod --image=nicolaka/netshoot --command -- sleep infinity
 Next let's start a with basic service (cluster IP). This will create a multi-node cluster made up of 3VM based on k3s. 
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-svc.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-svc.yaml
 ```
 
 This is what we get:
@@ -495,7 +495,7 @@ spec:
 ```
 Let's start a new deployment with this nodeport:
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-np-svc.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-np-svc.yaml
 ````
 After deployment we have the following:
 ```console
@@ -602,7 +602,7 @@ We're now using the external interface to the current networking thanks to a vla
 ```
 This should be there after deployment, but in case this has been lost (reboot), you may execute the following script:
 ```
-curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/external-net.sh | sh
+curl -sSL https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/external-net.sh | sh
 ```
 
 ###  5.2. <a name='MetalbDeployment'></a>Metalb Deployment
@@ -644,7 +644,7 @@ We want to expose a dedicated load balancer IP=10.123.123.100 outside the cluste
 Deploy the metalb service in L2 mode. It will reach the same pods as the basic nginx service thanks to selector.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-svc.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-mlb-svc.yaml
 ```
 We're having now a new service of Type LoadBalancer which has an external IP.
 
@@ -833,7 +833,7 @@ spec:
 ```
 
 ```console
-ubuntu@vm1:~$  kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-svc-local.yaml
+ubuntu@vm1:~$  kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-mlb-svc-local.yaml
 service/nginx-mlb-l2-service configured
 ipaddresspool.metallb.io/external-pool unchanged
 l2advertisement.metallb.io/l2-metalb unchanged
@@ -970,7 +970,7 @@ ubuntu@vm1:~$
 The following manifest deploys 3 pods in hostnetwork, together with VIP 10.123.123.102 in the external network via metallb.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-svc-hostnetwork.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-mlb-svc-hostnetwork.yaml
 ```
 This works as expected.
 ```
@@ -1137,7 +1137,7 @@ We're using "externalTrafficPolicy: Cluster" which is the default mode.
 ```
 Spawn netshoot pod on vm1. 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/test-pod-vm1.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/test-pod-vm1.yaml
 ```
 And let's add an interface within this pod so we can generate "external request" from this pod to the metalb VIP.
 ```
@@ -1256,7 +1256,7 @@ kubectl label nodes vm3 zone=zone2
 Apply the manifest for metallb service and app deployments
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-2-vips.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-mlb-2-vips.yaml
 ```
 
 For the sake of simplicity here what is defined in service/metalb - only zone1 displayed for simplicity -.
@@ -1376,7 +1376,7 @@ root@fiveg-host-24-node4:~#
 ```
 Let's see what happens if we update the services with "externalTraficPolicy = local" since landing on vm1 for zone2 would not allow forwarding to vm3 in zone2.
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/nginx-mlb-2-vips-local.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/nginx-mlb-2-vips-local.yaml
 ```
 
 It actually works as expected. We can achieve non fate-sharing deployments:
@@ -1420,7 +1420,7 @@ sudo apt install lksctp-tools -y
 ```
 Then launch the deployment of the sctp service and load balancer (VIP 10.123.123.101 port 10000).
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/sctp-mlb-svc.yaml
 ```
 Now we can test from the host (i.e. external).
 
@@ -1610,8 +1610,8 @@ The following diagram summarizes this setup:
 
 In the Kubernetes Cluster (vm1), launch the sctp service and deployment and the IPSEC daemonset:
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-vip1234.yaml
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-daemonset.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/sctp-mlb-vip1234.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/strongswan-daemonset.yaml
 ```
 
 Here is what we get:
@@ -1639,7 +1639,7 @@ ubuntu@vm1:~$
 Next, to test connectivity of IPSEC/SCTP, use the VM (vm-ext) with the following manifest (it will deploy an IPSEC client with tunnel destination=10.123.123.200 -IPSEC VIP- and SA 5.6.7.8-1.2.3.4):
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/strongswan-client.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/strongswan-client.yaml
 ```
 
 ##### Test IPSEC-SCTP-1: IPSEC policy-based forwarding (default) + externalTrafficPolicy: Cluster == FAILED
@@ -1820,7 +1820,7 @@ If we deploy sctp server pods in the hostnetwork, we're having a much simpler da
 Either update previous deployment or delete current/apply the following manifest. It will deploy the sctp servers in the hostnetwork with "externalTrafficPolicy: Local".
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-svc-vip1234-hostnetwork-local.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/sctp-mlb-svc-vip1234-hostnetwork-local.yaml
 ```
 
 As we can expect, only 1 pod per node can be deployed since there is conflict with the nodeport. So this option does not allow scale-out.
@@ -2027,7 +2027,7 @@ kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing
 ```
 Next, the same manifest for the SCTP servers (6) as in IPSEC-SCTP-1 is used for testing SCTP.
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/sctp-mlb-vip1234.yaml
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/sctp-mlb-vip1234.yaml
 ```
 
 For conveniency, IPSEC configuration are displayed below. Only vm1 is based on latest swanctl configuration (swanctl.conf file), where the binding with xfrm interface happens thanks to the f_id_out/in identifiers, which must map with the xfrm interface identifier (123 in our case).
@@ -2166,8 +2166,6 @@ The manifest can be found [here](source/sctpserver-with-ipsec.yaml). Here is the
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctpserver-with-ipsec.yaml
 ```
-### SNAT integration
-
 
 **Test Results**
 
@@ -2202,7 +2200,17 @@ Client: Sending packets.(1/1)
           SNDRCV(stream=0 flags=0x1 ppid=1090803534
         sendmsg(sk=3, assoc=0)    1 bytes.
 ```
+### SNAT integration
 
+In this option, we use independant pods for IPSEC (pod network) and SCTP Server.
+- IPSEC Tunnels are terminated in the pod network. The IPSEC pod created via Daemonset so we have a single pod per server.IPSEC MUST work with externaltrafficpolicy local to make sure there is no load balancing for IPSEC
+- SNAT is enforced within the IPSEC pod with pod IP (aka. masquerade) to allow SCTP session to be routed back to the pod.
+- SCTP server runs in a separate pod. We're reusing the same manifest as before.
+
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/main/source/sctp-mlb-vip1234.yaml
+kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctpserver-ipsec-SNAT%20.yaml
+```
 
 ##  6. <a name='OpenshiftIntegration'></a>Openshift Integration
 
