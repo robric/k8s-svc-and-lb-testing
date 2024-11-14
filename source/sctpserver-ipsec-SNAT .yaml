@@ -1,0 +1,185 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ipsec-config
+data:
+  start.sh: |
+    #!/bin/sh
+    echo "Installing Strongswan packages..."
+    apt-get update && apt-get install -y strongswan strongswan-swanctl
+    cp /etc/swanctl/swanctl.conf-tmp /etc/swanctl/swanctl.conf
+    cp /etc/strongswan.conf-tmp /etc/strongswan.conf
+    echo "Starting Strongswan..."
+    ipsec start
+    sleep 5
+    swanctl --load-all
+    echo "We're done !"
+    tail -f /dev/null
+  swanctl.conf: |-
+    connections {
+      tunnel-accept-any {
+        local_addrs  = %any
+        remote_addrs = %any
+        local {
+          auth = psk
+          id = myserver
+        }
+        remote {
+          auth = psk
+          id = myclient
+        }
+        children {
+          net-net {
+            mode = tunnel
+            local_ts  = 0.0.0.0/0
+            remote_ts = 0.0.0.0/0
+            esp_proposals = aes128gcm128
+            start_action = start
+          }
+        }
+        version = 2
+        mobike = no
+        reauth_time = 10800
+        proposals = aes128-sha256-modp3072
+      }
+    }
+    secrets {
+      ike-1 {
+        id-1 = myserver
+        id-2 = myclient
+        secret = "verysecure"
+      }
+    }
+
+  strongswan.conf: |-
+    charon {
+      install_routes = yes
+      send_vendor_id = yes
+      dns1 = 8.8.8.8
+      dns2 = 8.8.4.4
+      plugins {
+        eap-dynamic {
+          preferred = mschapv2, tls, md5
+        }
+        dhcp {
+          identity_lease = yes
+        }
+      }
+
+      filelog {
+        charon {
+            path = /var/log/charon.log
+            time_format = %b %e %T
+            ike_name = yes
+            append = no
+            default = 2
+            flush_line = yes
+        }
+        stderr {
+            ike = 2
+            knl = 3
+            net = 3
+        }
+      }
+      syslog {
+          identifier = charon-custom
+          daemon {
+          }
+          auth {
+              default = -1
+              ike = 0
+          }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ipsec-ds
+spec:
+  selector:
+    matchLabels:
+      app: strongswan
+  template:
+    metadata:
+      labels:
+        app: strongswan
+    spec:
+      containers:
+      - name: strongswan
+        image: ubuntu:22.04
+        command: ["/bin/sh"]
+        args: ["/start.sh"]
+        securityContext:
+          privileged: true
+          runAsUser: 0
+          runAsGroup: 0
+        ports:
+          - containerPort: 500
+            name: vpn-isakmp
+            protocol: UDP
+          - containerPort: 4500
+            name: vpn-ike
+            protocol: UDP
+        volumeMounts:
+        - name: config
+          mountPath: /start.sh
+          subPath: start.sh
+          readOnly: true
+        - name: config
+          mountPath: /etc/swanctl/swanctl.conf-tmp
+          subPath: swanctl.conf
+        - name: config
+          mountPath: /etc/strongswan.conf-tmp
+          subPath: strongswan.conf
+        env:
+          - name: DEBIAN_FRONTEND
+            value: noninteractive
+      volumes:
+      - name: config
+        configMap:
+          name: ipsec-config
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: strongswan
+  annotations:
+    metallb.universe.tf/address-pool: ipsec-external-pool
+spec:
+  externalTrafficPolicy: Local
+  selector: 
+    app: sctpserver-with-ipsec
+  ports:
+  - name: vpn-isakmp
+    protocol: UDP
+    port: 500
+    targetPort: 500
+  - name: vpn-ike-esp-nat-t
+    protocol: UDP
+    port: 4500
+    targetPort: 4500
+  type: LoadBalancer
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ipsec-external-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.123.123.200/32
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-metalb-ipsec
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - ipsec-external-pool
+---
+
+
+

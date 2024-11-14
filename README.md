@@ -2105,6 +2105,7 @@ sudo ip route add 5.6.7.8/32 dev ipsec0
 ```
 
 ###  5.4. <a name='SinglepodforIPSECandSCTP-hostnetwork:false-'></a>Single pod for IPSEC and SCTP -hostnetwork:false-
+**Description**
 
 This test is just a variation with a pod combining both IPSEC (strongswan) and the sctp server (sctp_test). 
 
@@ -2165,6 +2166,10 @@ The manifest can be found [here](source/sctpserver-with-ipsec.yaml). Here is the
 ```
 kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctpserver-with-ipsec.yaml
 ```
+### SNAT integration
+
+
+**Test Results**
 
 SCTP and pings from external VM just work fine.
 
