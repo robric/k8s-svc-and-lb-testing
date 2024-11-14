@@ -144,7 +144,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: strongswan
+  name: ipsec-vip
   annotations:
     metallb.universe.tf/address-pool: ipsec-external-pool
 spec:
