@@ -2208,7 +2208,7 @@ In this option, we use independant pods for IPSEC (pod network) and SCTP Server.
 - SCTP server runs in a separate pod. We're reusing the same manifest as before.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctp-mlb-vip1234.yaml
+kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctp-mlb-svc-vip1234.yaml
 
 kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/strongswan-ipsec-with-SNAT.yaml
 ```
