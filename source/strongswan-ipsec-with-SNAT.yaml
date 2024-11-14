@@ -150,7 +150,7 @@ metadata:
 spec:
   externalTrafficPolicy: Local
   selector: 
-    app: sctpserver-with-ipsec
+    app: strongswan
   ports:
   - name: vpn-isakmp
     protocol: UDP
