@@ -39,6 +39,7 @@ This page is also:
 		* 5.3.8. [Metallb compliance with SCTP](#MetallbcompliancewithSCTP)
 		* 5.3.9. [Metallb with IPSEC (strongswan) and SCTP](#MetallbwithIPSECstrongswanandSCTP)
 	* 5.4. [Single pod for IPSEC and SCTP -hostnetwork:false-](#SinglepodforIPSECandSCTP-hostnetwork:false-)
+	* 5.5. [SNAT integration](#SNATintegration)
 6. [Openshift Integration](#OpenshiftIntegration)
 	* 6.1. [Background](#Background)
 	* 6.2. [Setup Description:](#SetupDescription:)
@@ -2200,7 +2201,7 @@ Client: Sending packets.(1/1)
           SNDRCV(stream=0 flags=0x1 ppid=1090803534
         sendmsg(sk=3, assoc=0)    1 bytes.
 ```
-### SNAT integration
+###  5.5. <a name='SNATintegration'></a>SNAT integration
 
 In this option, we use independant pods for IPSEC (pod network) and SCTP Server.
 - IPSEC Tunnels are terminated in the pod network. The IPSEC pod created via Daemonset so we have a single pod per server.IPSEC MUST work with externaltrafficpolicy local to make sure there is no load balancing for IPSEC
