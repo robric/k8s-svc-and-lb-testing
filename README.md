@@ -2260,12 +2260,20 @@ In this option, we use independant pods for IPSEC (pod network) and SCTP Server.
                 +---------------------------------+               
                               vm-ext         
 ```
-
+The deployment is achieved thanks to two manifests.
 ```
 kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctp-mlb-svc-vip1234.yaml
 
 kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/strongswan-ipsec-with-SNAT.yaml
 ```
+**Test Results**
+
+Unfortunately, SCTP packets are dropped in the same way than tests IPSEC-SCTP-3 and IPSEC-SCTP-4. The IPSEC policy seems to be conflicting with CNI/NAT enforcement. 
+Concretely:
+-  if SCTP load-balancing sends packets to a pod in a different server, things work
+-  if SCTP load-balancing sends packets to a local pod, packets get dropped.
+
+
 
 ##  6. <a name='OpenshiftIntegration'></a>Openshift Integration
 
