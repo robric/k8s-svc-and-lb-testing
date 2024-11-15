@@ -2201,12 +2201,65 @@ Client: Sending packets.(1/1)
           SNDRCV(stream=0 flags=0x1 ppid=1090803534
         sendmsg(sk=3, assoc=0)    1 bytes.
 ```
-###  5.5. <a name='SNATintegration'></a>SNAT integration
+###  5.5. <a name='SNATintegration'></a>SNAT integration (hostnetwork: false)
 
 In this option, we use independant pods for IPSEC (pod network) and SCTP Server.
-- IPSEC Tunnels are terminated in the pod network. The IPSEC pod created via Daemonset so we have a single pod per server.IPSEC MUST work with externaltrafficpolicy local to make sure there is no load balancing for IPSEC
+- IPSEC Tunnels are terminated in the pod network (hostnetwork: false). The IPSEC pod is created via Daemonset so we have a single pod per server. IPSEC MUST work with externaltrafficpolicy local to make sure there is no load balancing for IPSEC
 - SNAT is enforced within the IPSEC pod with pod IP (aka. masquerade) to allow SCTP session to be routed back to the pod.
 - SCTP server runs in a separate pod. We're reusing the same manifest as before.
+
+```
+         vm1                   vm2                   vm3          
++-------------------+ +-------------------+ +-------------------+ 
+|                   | |                   | |                   | 
+| +------+ +------+ | | +------+ +------+ | | +------+ +------+ | 
+| | sctp | | sctp | | | | sctp | | sctp | | | | sctp | | sctp | | 
+| | pod1 | | pod2 | | | | pod3 | | pod4 | | | | pod5 | | pod6 | | 
+| |      | |      | | | |      | |      | | | |      | |      | | 
+| | eth0 | | eth0 | | | | eth0 | | eth0 | | | | eth0 | | eth0 | | 
+| +--||--+ +--||--+ | | +--||--+ +--||--+ | | +--||--+ +--||--+ | 
+|                   | |                   | |                   | 
+|                   | |                   | |                   | 
+|    +-----------------------------------------------------+    | 
+|    |                   SCTP VIP 1.2.3.4                  |    | 
+|    +-----------------------------------------------------+    | 
+|                   | |                   | |                   | 
+|  +-------------+  | |  +-------------+  | |  +-------------+  | 
+|  |  ipsec ds   |  | |  |  ipsec ds   |  | |  |  ipsec ds   |  | 
+|  |     pod     |  | |  |     pod     |  | |  |     pod     |  | 
+|  |             |  | |  |             |  | |  |             |  | 
+|  |             |  | |  |             |  | |  |             |  | 
+|  |   [SNAT]    |  | |  |   [SNAT]    |  | |  |   [SNAT]    |  | 
+|  |    eth0     |  | |  |    eth0     |  | |  |    eth0     |  | 
+|  +-----||------+  | |  +-----||------+  | |  +-----||------+  | 
+|                   | |                   | |                   | 
+|                   | |                   | |                   | 
++---------|---------+ +----------|--------+ +---------|---------+ 
+  ens3.100|.1            ens3.100|.2          ens3.100|.3           
+          |                      |                    |           
+          |                      |                    |           
+     +----------------------------------------------------+       
+     |               IPSEC VIP 10.123.123.200             |       
+     +----------------------------------------------------+       
+          |                      |                    |           
+          ---------------------------------------------           
+                        vlan external network                     
+                           10.123.123.0/24                        
+                                 |                                
+                                 |.4                              
+                +---------------------------------+               
+                |                                 |               
+                |  SCTP over IPSEC:               |               
+                |                                 |               
+                |  SCTP SRC=5.6.7.8/32            |               
+                |  SCTP DEST=1.2.3.4/32           |               
+                |                                 |               
+                |  IPSEC SRC=10.123.123.4         |               
+                |  IPSEC DEST=10.123.123.200      |               
+                |                                 |               
+                +---------------------------------+               
+                              vm-ext         
+```
 
 ```
 kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctp-mlb-svc-vip1234.yaml
