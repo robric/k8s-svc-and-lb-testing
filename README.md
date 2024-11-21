@@ -38,8 +38,6 @@ This page is also:
 		* 5.3.7. [Non fate-sharing deployment with metallb and  multiple VIPs](#Nonfate-sharingdeploymentwithmetallbandmultipleVIPs)
 		* 5.3.8. [Metallb compliance with SCTP](#MetallbcompliancewithSCTP)
 		* 5.3.9. [Metallb with IPSEC (strongswan) and SCTP](#MetallbwithIPSECstrongswanandSCTP)
-	* 5.4. [Single pod for IPSEC and SCTP -hostnetwork:false-](#SinglepodforIPSECandSCTP-hostnetwork:false-)
-	* 5.5. [SNAT integration](#SNATintegration)
 6. [Openshift Integration](#OpenshiftIntegration)
 	* 6.1. [Background](#Background)
 	* 6.2. [Setup Description:](#SetupDescription:)
