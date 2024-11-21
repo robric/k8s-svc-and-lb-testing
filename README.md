@@ -2105,7 +2105,8 @@ sudo ip link set ipsec0 up
 sudo ip route add 5.6.7.8/32 dev ipsec0
 ```
 
-###  5.4. <a name='SinglepodforIPSECandSCTP-hostnetwork:false-'></a>Single pod for IPSEC and SCTP -hostnetwork:false-
+#####  IPSEC-SCTP-7: Single pod for IPSEC and SCTP + HostNetwork: False ===> PASS
+
 **Description**
 
 This test is just a variation with a pod combining both IPSEC (strongswan) and the sctp server (sctp_test). 
@@ -2201,7 +2202,7 @@ Client: Sending packets.(1/1)
           SNDRCV(stream=0 flags=0x1 ppid=1090803534
         sendmsg(sk=3, assoc=0)    1 bytes.
 ```
-###  5.5. <a name='SNATintegration'></a>SNAT integration (hostnetwork: false)
+#####  IPSEC-SCTP-7: IPSEC policy-based forwarding + HostNetwork: False + SNAT ===> FAIL
 
 In this option, we use independant pods for IPSEC (pod network) and SCTP Server.
 - IPSEC Tunnels are terminated in the pod network (hostnetwork: false). The IPSEC pod is created via Daemonset so we have a single pod per server. IPSEC MUST work with externaltrafficpolicy local to make sure there is no load balancing for IPSEC
@@ -2273,7 +2274,15 @@ Concretely:
 -  if SCTP load-balancing sends packets to a pod in a different server, things work
 -  if SCTP load-balancing sends packets to a local pod, packets get dropped.
 
+#####  IPSEC-SCTP-8: IPSEC route-based VPN + HostNetwork: False + SNAT ===> FAIL
 
+This test mixes techniques from IPSEC-SCTP-6 and IPSEC-SCTP-7 to overcome the problem of IPSEC policy-based forwarding and CNI.
+
+```
+kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctp-mlb-svc-vip1234.yaml
+
+kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/strongswan-ipsec-with-SNAT-route-based-VPN.yaml
+```
 
 ##  6. <a name='OpenshiftIntegration'></a>Openshift Integration
 
