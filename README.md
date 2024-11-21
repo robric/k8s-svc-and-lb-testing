@@ -40,7 +40,7 @@ This page is also:
 		* 5.3.9. [Metallb with IPSEC (strongswan) and SCTP](#MetallbwithIPSECstrongswanandSCTP)
 6. [Openshift Integration](#OpenshiftIntegration)
 	* 6.1. [Background](#Background)
-	* 6.2. [Setup Description:](#SetupDescription:)
+	* 6.2. [Setup Description](#SetupDescription)
 	* 6.3. [Metallb Installation](#MetallbInstallation)
 	* 6.4. [Metallb service instantiation](#Metallbserviceinstantiation)
 		* 6.4.1. [Deployment with ExternalTraficPolicy Cluster](#DeploymentwithExternalTraficPolicyCluster)
@@ -2410,7 +2410,7 @@ ubuntu@vm1:~$ sudo conntrack -E -e NEW -p sctp
 
 This section focuses on openshift, which has specific OVN-dependencies for setting up NAT translations.
 
-###  6.2. <a name='SetupDescription:'></a>Setup Description:
+###  6.2. <a name='SetupDescription'></a>Setup Description
 
 The setup is made up 3 nodes and an external server:
 - cluster nodes: fiveg-host-21-nodeX with X={1,3,4}
