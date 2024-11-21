@@ -1537,15 +1537,15 @@ CONCLUSION: *We're getting decent statistical distribution of the session on all
 Long story short, there is a conflict between CNI NAT translation and IPSEC policies. This can be worked around with route-based VPN, which introduces more configuration complexity (interface definition and routes).
 
 The below list summarizes the test results:
--  IPSEC-SCTP-1: IPSEC policy-based forwarding + HostNetwork: False + externalTrafficPolicy: Local   ===> FAILED
--  IPSEC-SCTP-2: IPSEC policy-based forwarding + HostNetwork: False + externalTrafficPolicy: Cluster ===> FAILED
--  IPSEC-SCTP-3: IPSEC policy-based forwarding + HostNetwork: True + externalTrafficPolicy: Local    ===> PASS
--  IPSEC-SCTP-4: IPSEC policy-based forwarding + HostNetwork: True + externalTrafficPolicy: Cluster  ===> PASS
--  IPSEC-SCTP-5: IPSEC route-based VPN (vti-based) + HostNetwork: False  ===> FAILED
--  IPSEC-SCTP-6: IPSEC route-based VPN (xfrmi-based) + HostNetwork: False  ===> PASS
+-  IPSEC-SCTP-1: IPSEC policy-based forwarding in hostnetwork  + sctp server pod HostNetwork: False + externalTrafficPolicy: Local   ===> FAILED
+-  IPSEC-SCTP-2: IPSEC policy-based forwarding in hostnetwork  + sctp server pod HostNetwork: False + externalTrafficPolicy: Cluster ===> FAILED
+-  IPSEC-SCTP-3: IPSEC policy-based forwarding in hostnetwork  + sctp server pod HostNetwork: True + externalTrafficPolicy: Local    ===> PASS
+-  IPSEC-SCTP-4: IPSEC policy-based forwarding in hostnetwork  + sctp server pod HostNetwork: True + externalTrafficPolicy: Cluster  ===> PASS
+-  IPSEC-SCTP-5: IPSEC route-based VPN (vti-based) in hostnetwork  + sctp server pod HostNetwork: False  ===> FAILED
+-  IPSEC-SCTP-6: IPSEC route-based VPN (xfrmi-based) in hostnetwork  + sctp server pod HostNetwork: False  ===> PASS
 - IPSEC-SCTP-7: Single pod for IPSEC and SCTP + HostNetwork: False ===> PASS
-- IPSEC-SCTP-8: IPSEC policy-based forwarding + HostNetwork: False + SNAT ===> FAIL
-- IPSEC-SCTP-9: IPSEC route-based VPN + HostNetwork: False + SNAT ===> PASS
+- IPSEC-SCTP-8: IPSEC policy-based forwarding with hostnetwork  False + sctp server pod with HostNetwork: False + SNAT ===> FAIL
+- IPSEC-SCTP-9: IPSEC route-based VPN with hostnetwork  False + sctp server pod with HostNetwork: False + SNAT ===> PASS
 
 ##### Test Setup Installation
 
@@ -1556,7 +1556,7 @@ In this section, we're testing a more complex integration with dual Metallb serv
 The IPSEC is managed by strongswan running in hostnetwork, where tunnel are terminated. This approach simplifies the routing/ipsec policies (ip xfrm policy) back to the remote subnets.
 
 The pod logic is as follow:
-- 3 pods for IPSEC control plane (actually daemonset running on each server)
+- 3 pods for IPSEC control plane (actually daemonset running on each server). 
 - 6 pods for the SCTP servers so we can test local LB (2 per servers for testing ExternalTrafficPolicy: Local) 
 
 The external VM (vm-ext) is a remote client for SCTP over IPSEC.
@@ -1647,6 +1647,9 @@ kubectl apply -f https://raw.githubusercontent.com/robric/multipass-3-node-k8s/m
 ```
 
 ##### Test IPSEC-SCTP-1: IPSEC policy-based forwarding (default) + externalTrafficPolicy: Cluster == FAILED
+
+- The IPSEC pods runs in kernel network namespace (hostnetwork:true)
+
 
 Although, things seems to work, since the client ultimately get an answer thanks to restransmissions, we're actually having packet drops: **[RESULT = FAILED]**:
 
