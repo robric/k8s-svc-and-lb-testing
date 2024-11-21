@@ -2271,17 +2271,134 @@ kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testin
 
 Unfortunately, SCTP packets are dropped in the same way than tests IPSEC-SCTP-3 and IPSEC-SCTP-4. The IPSEC policy seems to be conflicting with CNI/NAT enforcement. 
 Concretely:
--  if SCTP load-balancing sends packets to a pod in a different server, things work
--  if SCTP load-balancing sends packets to a local pod, packets get dropped.
+-  if metallb/SCTP load-balancing sends packets to a pod in a different server, things work
+-  if metallb/SCTP load-balancing sends packets to a local pod, packets get dropped.
 
-#####  IPSEC-SCTP-8: IPSEC route-based VPN + HostNetwork: False + SNAT ===> FAIL
+#####  IPSEC-SCTP-8: IPSEC route-based VPN + HostNetwork: False + SNAT ===> PASS
 
-This test mixes techniques from IPSEC-SCTP-6 and IPSEC-SCTP-7 to overcome the problem of IPSEC policy-based forwarding and CNI.
+This test mixes techniques from IPSEC-SCTP-6 and IPSEC-SCTP-7 to overcome the problem of IPSEC policy-based forwarding and CNI. We're basically taking IPSEC-SCTP-7 deployment and use the route-based VPN configuration defined in IPSEC-SCTP-6.
+
+```
+         vm1                   vm2                   vm3          
++-------------------+ +-------------------+ +-------------------+ 
+|                   | |                   | |                   | 
+| +------+ +------+ | | +------+ +------+ | | +------+ +------+ | 
+| | sctp | | sctp | | | | sctp | | sctp | | | | sctp | | sctp | | 
+| | pod1 | | pod2 | | | | pod3 | | pod4 | | | | pod5 | | pod6 | | 
+| |      | |      | | | |      | |      | | | |      | |      | | 
+| | eth0 | | eth0 | | | | eth0 | | eth0 | | | | eth0 | | eth0 | | 
+| +--||--+ +--||--+ | | +--||--+ +--||--+ | | +--||--+ +--||--+ | 
+|                   | |                   | |                   | 
+|                   | |                   | |                   | 
+|    +-----------------------------------------------------+    | 
+|    |                   SCTP VIP 1.2.3.4                  |    | 
+|    +-----------------------------------------------------+    | 
+|                   | |                   | |                   | 
+|  +-------------+  | |  +-------------+  | |  +-------------+  | 
+|  |  ipsec ds   |  | |  |  ipsec ds   |  | |  |  ipsec ds   |  | 
+|  |             |  | |  |             |  | |  |             |  | 
+|  |             |  | |  |             |  | |  |             |  |  
+|  |[ route     ]|  | |  |[ route     ]|  | |  |[ route     ]|  |
+|  |[ 5.6.7.8/32]|  | |  |[ 5.6.7.8/32]|  | |  |[ 5.6.7.8/32]|  |
+|  |[ via       ]|  | |  |[ via       ]|  | |  |[ via       ]|  |
+|  |[ ipsec0    ]|  | |  |[ ipsec0    ]|  | |  |[ ipsec0    ]|  |
+|  |             |  | |  |             |  | |  |             |  | 
+|  | (dev ipsec0)|  | |  | (dev ipsec0)|  | |  | (dev ipsec0)|  | 
+|  |   [SNAT]    |  | |  |   [SNAT]    |  | |  |   [SNAT]    |  | 
+|  |    eth0     |  | |  |    eth0     |  | |  |    eth0     |  | 
+|  +-----||------+  | |  +-----||------+  | |  +-----||------+  | 
+|                   | |                   | |                   | 
+|                   | |                   | |                   | 
++---------|---------+ +----------|--------+ +---------|---------+ 
+  ens3.100|.1            ens3.100|.2          ens3.100|.3           
+          |                      |                    |           
+          |                      |                    |           
+     +----------------------------------------------------+       
+     |               IPSEC VIP 10.123.123.200             |       
+     +----------------------------------------------------+       
+          |                      |                    |           
+          ---------------------------------------------           
+                        vlan external network                     
+                           10.123.123.0/24                        
+                                 |                                
+                                 |.4                              
+                +---------------------------------+               
+                |                                 |               
+                |  SCTP over IPSEC:               |               
+                |                                 |               
+                |  SCTP SRC=5.6.7.8/32            |               
+                |  SCTP DEST=1.2.3.4/32           |               
+                |                                 |               
+                |  IPSEC SRC=10.123.123.4         |               
+                |  IPSEC DEST=10.123.123.200      |               
+                |                                 |               
+                +---------------------------------+               
+                              vm-ext         
+```
+
+The deployment is achieved thanks to two manifests.
 
 ```
 kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/sctp-mlb-svc-vip1234.yaml
 
 kubectl apply -f  https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/strongswan-ipsec-with-SNAT-route-based-VPN.yaml
+```
+You get these pods and svc:
+```
+ubuntu@vm1:~$ kubectl get pods -o wide
+NAME                           READY   STATUS    RESTARTS   AGE     IP           NODE   NOMINATED NODE   READINESS GATES
+ipsec-ds-jwrls                 1/1     Running   0          4m45s   10.42.1.66   vm2    <none>           <none>
+ipsec-ds-kgrjg                 1/1     Running   0          4m45s   10.42.0.81   vm1    <none>           <none>
+ipsec-ds-zkdfz                 1/1     Running   0          4m45s   10.42.2.64   vm3    <none>           <none>
+sctp-server-78c66f958b-6hcl7   1/1     Running   0          3m27s   10.42.1.67   vm2    <none>           <none>
+sctp-server-78c66f958b-gvp74   1/1     Running   0          3m27s   10.42.0.82   vm1    <none>           <none>
+sctp-server-78c66f958b-j7wrh   1/1     Running   0          3m27s   10.42.2.66   vm3    <none>           <none>
+sctp-server-78c66f958b-lzjk6   1/1     Running   0          3m27s   10.42.2.65   vm3    <none>           <none>
+sctp-server-78c66f958b-tt8s4   1/1     Running   0          3m27s   10.42.1.68   vm2    <none>           <none>
+sctp-server-78c66f958b-vnx4q   1/1     Running   0          3m27s   10.42.0.83   vm1    <none>           <none>
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ kubectl  get svc
+NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                        AGE
+ipsec-vip             LoadBalancer   10.43.7.21      10.123.123.200   500:31727/UDP,4500:32569/UDP   7d1h
+kubernetes            ClusterIP      10.43.0.1       <none>           443/TCP                        7d2h
+sctp-server-vip1234   LoadBalancer   10.43.202.101   1.2.3.4          10000:32587/SCTP               7d1h
+ubuntu@vm1:~$ 
+```
+CAVEAT:
+
+**Just like in previous test (IPSEC-SCTP-7), the load balancing for SCTP happens cluster-wide since trafic is seen as cluster-internal (pod to pod).**
+
+**Test Results**
+
+This works ! There are no more drops observed in IPSEC-SCTP-7.
+
+```
+#
+# Get ips from all pods for sctp server
+# 
+
+ubuntu@vm1:~$ kubectl get pods -o wide | grep sctp
+sctp-server-78c66f958b-6hcl7   1/1     Running   0          6m17s   10.42.1.67   vm2    <none>           <none>
+sctp-server-78c66f958b-gvp74   1/1     Running   0          6m17s   10.42.0.82   vm1    <none>           <none>
+sctp-server-78c66f958b-j7wrh   1/1     Running   0          6m17s   10.42.2.66   vm3    <none>           <none>
+sctp-server-78c66f958b-lzjk6   1/1     Running   0          6m17s   10.42.2.65   vm3    <none>           <none>
+sctp-server-78c66f958b-tt8s4   1/1     Running   0          6m17s   10.42.1.68   vm2    <none>           <none>
+sctp-server-78c66f958b-vnx4q   1/1     Running   0          6m17s   10.42.0.83   vm1    <none>           <none>
+
+#
+# Make sure we have Load balancing working to each of the pods (e.g. make sure local forwarding works since it was failing with policy)
+# 
+
+ubuntu@vm1:~$ sudo conntrack -E -e NEW -p sctp
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=49194 dport=10000 [UNREPLIED] src=10.42.2.65 dst=10.42.0.0 sport=9999 dport=6721
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=52841 dport=10000 [UNREPLIED] src=10.42.1.68 dst=10.42.0.0 sport=9999 dport=21766
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=47027 dport=10000 [UNREPLIED] src=10.42.0.83 dst=10.42.0.1 sport=9999 dport=42700
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=43233 dport=10000 [UNREPLIED] src=10.42.2.66 dst=10.42.0.0 sport=9999 dport=58046
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=50469 dport=10000 [UNREPLIED] src=10.42.2.66 dst=10.42.0.0 sport=9999 dport=44253
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=60397 dport=10000 [UNREPLIED] src=10.42.1.68 dst=10.42.0.0 sport=9999 dport=61726
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=60582 dport=10000 [UNREPLIED] src=10.42.2.65 dst=10.42.0.0 sport=9999 dport=52108
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=44875 dport=10000 [UNREPLIED] src=10.42.2.65 dst=10.42.0.0 sport=9999 dport=6425
+    [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=52146 dport=10000 [UNREPLIED] src=10.42.1.67 dst=10.42.0.0 sport=9999 dport=3980
 ```
 
 ##  6. <a name='OpenshiftIntegration'></a>Openshift Integration
