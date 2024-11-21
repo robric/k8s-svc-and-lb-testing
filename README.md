@@ -1543,6 +1543,9 @@ The below list summarizes the test results:
 -  IPSEC-SCTP-4: IPSEC policy-based forwarding + HostNetwork: True + externalTrafficPolicy: Cluster  ===> PASS
 -  IPSEC-SCTP-5: IPSEC route-based VPN (vti-based) + HostNetwork: False  ===> FAILED
 -  IPSEC-SCTP-6: IPSEC route-based VPN (xfrmi-based) + HostNetwork: False  ===> PASS
+- IPSEC-SCTP-7: Single pod for IPSEC and SCTP + HostNetwork: False ===> PASS
+- IPSEC-SCTP-8: IPSEC policy-based forwarding + HostNetwork: False + SNAT ===> FAIL
+- IPSEC-SCTP-9: IPSEC route-based VPN + HostNetwork: False + SNAT ===> PASS
 
 ##### Test Setup Installation
 
@@ -2202,7 +2205,7 @@ Client: Sending packets.(1/1)
           SNDRCV(stream=0 flags=0x1 ppid=1090803534
         sendmsg(sk=3, assoc=0)    1 bytes.
 ```
-#####  IPSEC-SCTP-7: IPSEC policy-based forwarding + HostNetwork: False + SNAT ===> FAIL
+#####  IPSEC-SCTP-8: IPSEC policy-based forwarding + HostNetwork: False + SNAT ===> FAIL
 
 In this option, we use independant pods for IPSEC (pod network) and SCTP Server.
 - IPSEC Tunnels are terminated in the pod network (hostnetwork: false). The IPSEC pod is created via Daemonset so we have a single pod per server. IPSEC MUST work with externaltrafficpolicy local to make sure there is no load balancing for IPSEC
@@ -2274,9 +2277,9 @@ Concretely:
 -  if metallb/SCTP load-balancing sends packets to a pod in a different server, things work
 -  if metallb/SCTP load-balancing sends packets to a local pod, packets get dropped.
 
-#####  IPSEC-SCTP-8: IPSEC route-based VPN + HostNetwork: False + SNAT ===> PASS
+#####  IPSEC-SCTP-9: IPSEC route-based VPN + HostNetwork: False + SNAT ===> PASS
 
-This test mixes techniques from IPSEC-SCTP-6 and IPSEC-SCTP-7 to overcome the problem of IPSEC policy-based forwarding and CNI. We're basically taking IPSEC-SCTP-7 deployment and use the route-based VPN configuration defined in IPSEC-SCTP-6.
+This test mixes techniques from IPSEC-SCTP-6 and IPSEC-SCTP-8 to overcome the problem of IPSEC policy-based forwarding and CNI. We're basically taking IPSEC-SCTP-8 deployment and use the route-based VPN configuration defined in IPSEC-SCTP-6.
 
 ```
          vm1                   vm2                   vm3          
@@ -2297,7 +2300,6 @@ This test mixes techniques from IPSEC-SCTP-6 and IPSEC-SCTP-7 to overcome the pr
 |  +-------------+  | |  +-------------+  | |  +-------------+  | 
 |  |  ipsec ds   |  | |  |  ipsec ds   |  | |  |  ipsec ds   |  | 
 |  |             |  | |  |             |  | |  |             |  | 
-|  |             |  | |  |             |  | |  |             |  |  
 |  |[ route     ]|  | |  |[ route     ]|  | |  |[ route     ]|  |
 |  |[ 5.6.7.8/32]|  | |  |[ 5.6.7.8/32]|  | |  |[ 5.6.7.8/32]|  |
 |  |[ via       ]|  | |  |[ via       ]|  | |  |[ via       ]|  |
