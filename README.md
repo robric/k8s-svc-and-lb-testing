@@ -2951,14 +2951,18 @@ recirc_id(0xdf0a5),dp_hash(0xd/0xf),in_port(5),eth(),eth_type(0x0800),ipv4(frag=
 Metalb permits to expose external VIPs for Ingress Traffic by DNATtting traffic (note: we saw earlier that there can be also some SNAT as well during the NAT process).
 For egress, traffic EgressIP permits to SNAT traffic in order to expose stable VIP to extrenal servers when initating connection from the kubernetes cluster.
 
+There is actually a good YT video from Franck that explains egressIP as well as plenty of other things that are covered here: 
+[MetalLB 201 - Advanced traffic steering](https://www.youtube.com/watch?v=AE50Gt54e4I).
+
 ### Configuration
 
 #### Preparation of the Cluster
 
-From openshift 4.14.  using OVNKubernetes CNI, the gatewaymode must be active (cf. metallb for openshift) as well as the hostrouting. This is controlled thanks to the network operator with the following parameters in spec.defaultnetwork.ovnKubernetesConfig.gatewayConfig:  
+From openshift 4.14.  using OVNKubernetes CNI, the gatewaymode and hostrouting must be switched if we want EgressIP for *external networks* . This is controlled thanks to the network operator with the following parameters in spec.defaultnetwork.ovnKubernetesConfig.gatewayConfig:  
 - ipForwarding: Global
 - routingViaHost: true
 
+So you ultimately get something like that:
 ```
 ec2-user@eksa-cluster:~$ oc get network.operator cluster -o yaml
 apiVersion: operator.openshift.io/v1
@@ -2973,6 +2977,55 @@ spec:
         routingViaHost: true
 ```
 
+Next, once this is done, label nodes where you want egressIP (SNAT) to be managed.
+
+```
+ec2-user@eksa-cluster:~$ oc get nodes -o wide
+NAME      STATUS   ROLES                         AGE    VERSION            INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                                                       KERNEL-VERSION                 CONTAINER-RUNTIME
+master1   Ready    control-plane,master,worker   136d   v1.27.16+e826056   10.87.104.21   <none>        Red Hat Enterprise  [...]
+master2   Ready    control-plane,master,worker   136d   v1.27.16+e826056   10.87.104.23   <none>        Red Hat Enterprise  [...]
+master3   Ready    control-plane,master,worker   136d   v1.27.16+e826056   10.87.104.24   <none>        Red Hat Enterprise  [...]
+
+ec2-user@eksa-cluster:~$ 
+ec2-user@eksa-cluster:~$ oc label master1       k8s.ovn.org/egress-assignable: ""
+ec2-user@eksa-cluster:~$ oc label master2       k8s.ovn.org/egress-assignable: ""
+ec2-user@eksa-cluster:~$ oc label master3       k8s.ovn.org/egress-assignable: ""
+```
+
+#### Definition of EgressIP
+
+The you can define your EgressIP - in this example 10.131.2.15 -, which an external network (cf oc get nodes with primary IPs in 10.87.104.0/24).
+We have two selectors for granular application of the EgressIP
+- namespace selector: select the namespace with label affiinity.
+- pod selector: select the pods/apps which you want to use this EgressIP. This option permits to have several EgressIP on different vlans (e.g. management, internal, dataplane... )  and maps these to specific egress trafic.
+
+In our case,  we launch a test pod in namespace test-ns-egressip 
+
+```
+kubectl run  test-pod --namespace test-ns-egressip  --image=nicolaka/netshoot --command -- sleep infinity
+```
+
+This result in the deployment is a pod  with appropriate labels which are used in the definition of the EgressIP.
+
+```
+ec2-user@eksa-cluster:~$ kubectl  get pods test-pod -n test-ns-egressip -o yaml
+apiVersion: v1
+kind: Pod
+metadata:
+[...]
+  labels:
+    run: test-pod
+ec2-user@eksa-cluster:~$ kubectl  get ns test-ns-egressip -o yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+[...]
+  labels:
+    kubernetes.io/metadata.name: test-ns-egressip
+```
+
+Next define the  egress IP  10.131.2.15  in an external network -here 10.131.2.0/-. 
+
 ```
 ec2-user@eksa-cluster:~$ kubectl get egressIP -o yaml
 apiVersion: v1
@@ -2984,13 +3037,73 @@ items:
     - 10.131.2.15
     namespaceSelector:
       matchLabels:
-        kubernetes.io/metadata.name: oran-smo
+        kubernetes.io/metadata.name: test-ns-egressip
     podSelector:
       matchLabels:
         run: test-pod
 ```
 
+After applying the egressIP, we can verify which server has ownership by checking the status. In this case master2 has ownership.
 
+```
+ec2-user@eksa-cluster:~$ kubectl get EgressIP egressips-prod 
+NAME             EGRESSIPS     ASSIGNED NODE   ASSIGNED EGRESSIPS
+egressips-prod   10.131.2.15   master2         10.131.2.15
+
+ec2-user@eksa-cluster:~$ kubectl get EgressIP egressips-prod -o yaml
+apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+[...]
+  egressIPs:
+  - 10.131.2.15
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-ns-egressip
+  podSelector:
+    matchLabels:
+      run: test-pod
+status:
+  items:
+  - egressIP: 10.131.2.15
+    node: master2
+```
+
+```
+# Generate external trafic from pod by ssh the local gateway 
+
+ec2-user@eksa-cluster:~$ oc exec -ti -n test-ns-egressip test-pod -- ssh 10.131.2.1
+root@10.131.2.1's password: 
+
+ec2-user@eksa-cluster:~$ sudo tcpdump -vni  external 
+tcpdump: listening on stc.external, link-type EN10MB (Ethernet), capture size 262144 bytes
+17:39:15.661324 IP (tos 0x48, ttl 62, id 19403, offset 0, flags [DF], proto TCP (6), length 60)
+    10.131.2.4.38242 > 10.131.2.1.22: Flags [S], cksum 0xb376 (correct), seq 3857734338, win 65280, options [mss 1360,sackOK,TS val 924479388 ecr 0,nop,wscale 7], length 0
+
+``` 
+
+But heck ??? according to TCPDUMP the source IP is not the EgressIP (10.131.2..15) but instead it relies on the server IP on which the pod is running !!! 
+
+So this does not work ?
+
+Well actually, let's rather initiate traffic to an IP that is not local to the subnet (1.2.4.3 here).
+
+```
+ec2-user@eksa-cluster:~$ oc exec -ti -n test-ns-egressip test-pod -- ssh 1.2.3.4
+The authenticity of host '1.2.3.4 (1.2.3.4)' can't be established.
+ED25519 key fingerprint is SHA256:vnqkuF8LISjPOTCB2p/zrXiLE2KYad9BtpuaIxchEr0.
+This host key is known by the following other names/addresses:
+    ~/.ssh/known_hosts:1: 10.131.2.1
+Are you sure you want to continue connecting (yes/no/[fingerprint])? ^Ccommand terminated with exit code 130
+
+ec2-user@eksa-cluster:~$ sudo tcpdump -vni  external 
+17:43:47.591945 IP (tos 0x48, ttl 61, id 38570, offset 0, flags [DF], proto TCP (6), length 60)
+    10.131.2.15.54812 > 1.2.3.4.22: Flags [S], cksum 0xd8db (correct), seq 2909976524, win 65280, options [mss 1360,sackOK,TS val 1737342192 ecr 0,nop,wscale 7], length 0
+```
+
+That's better !!! but what happened ?  Simply, the master for egressIP is on a different server than the test pod (resp. master2 and master3). However, since the destination is on the local LAN, the server will directly send trafic to the LAN without tromboning via the EgressIP master. If the pod were  on the same server as the EgressIP, we would actually see SNAT enforced with EgressIP. 
+
+This is not a big deal, but this behavior is worth to be aware of .
 
 ## 7. <a name='Troubleshooting'></a>Troubleshooting metallb
 
