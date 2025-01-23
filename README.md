@@ -2959,7 +2959,7 @@ For egress, traffic EgressIP permits to SNAT traffic in order to expose stable V
 There is actually a good YT video from Franck that explains egressIP as well as plenty of other things that are covered here: 
 [MetalLB 201 - Advanced traffic steering](https://www.youtube.com/watch?v=AE50Gt54e4I).
 
-###  7.2. <a name='Configuration'></a>Configuration
+###  7.2. <a name='Configuration'></a>Testing
 
 ####  7.2.1. <a name='PreparationoftheCluster'></a>Preparation of the Cluster
 
