@@ -16,16 +16,16 @@ This page is also:
 ##  1. <a name='TableofContent'></a>Table of Content
 
 <!-- vscode-markdown-toc -->
-1. [Table of Content](#TableofContent)
-2. [Prerequisites](#Prerequisites)
-3. [VM and Cluster deployment](#VMandClusterdeployment)
-4. [ K8s basic service deployment and routing analysis](#K8sbasicservicedeploymentandroutinganalysis)
+* 1. [Table of Content](#TableofContent)
+* 2. [Prerequisites](#Prerequisites)
+* 3. [VM and Cluster deployment](#VMandClusterdeployment)
+* 4. [ K8s basic service deployment and routing analysis](#K8sbasicservicedeploymentandroutinganalysis)
 	* 4.1. [Bootstraping](#Bootstraping)
 	* 4.2. [How does a pod reaches a services ?](#Howdoesapodreachesaservices)
 	* 4.3. [A glance at coredns](#Aglanceatcoredns)
 	* 4.4. [Cluster IP Service Routing Details](#ClusterIPServiceRoutingDetails)
 	* 4.5. [Nodeport Service Routing Details](#NodeportServiceRoutingDetails)
-5. [Metalb Integration on 3 node cluster](#MetalbIntegrationon3nodecluster)
+* 5. [Metalb Integration on 3 node cluster](#MetalbIntegrationon3nodecluster)
 	* 5.1. [Target Design](#TargetDesign)
 	* 5.2. [Metalb Deployment](#MetalbDeployment)
 	* 5.3. [Test in L2 mode](#TestinL2mode)
@@ -38,7 +38,7 @@ This page is also:
 		* 5.3.7. [Non fate-sharing deployment with metallb and  multiple VIPs](#Nonfate-sharingdeploymentwithmetallbandmultipleVIPs)
 		* 5.3.8. [Metallb compliance with SCTP](#MetallbcompliancewithSCTP)
 		* 5.3.9. [Metallb with IPSEC (strongswan) and SCTP](#MetallbwithIPSECstrongswanandSCTP)
-6. [Openshift Integration](#OpenshiftIntegration)
+* 6. [Openshift Integration](#OpenshiftIntegration)
 	* 6.1. [Background](#Background)
 	* 6.2. [Setup Description](#SetupDescription)
 	* 6.3. [Metallb Installation](#MetallbInstallation)
@@ -48,7 +48,12 @@ This page is also:
 		* 6.4.3. [Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080](#InspectiptablesduringwhenasessiontoVIPisinitiatedfromtheexternalserver-----SRC10.131.2.3.XXXXXDST10.131.2.14.8080)
 		* 6.4.4. [2. Check packet transformation up to pod when transiting ovs-bridge br-ex -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**](#Checkpackettransformationuptopodwhentransitingovs-bridgebr-ex-----SRC10.131.2.3.XXXXXDST172.30.0.4.8080)
 		* 6.4.5. [4. Packet handling in br-ex](#Packethandlinginbr-ex)
-7. [Troubleshooting](#Troubleshooting)
+* 7. [EgressIP  (openshift)](#EgressIPopenshift)
+	* 7.1. [Background](#Background-1)
+	* 7.2. [Configuration](#Configuration)
+		* 7.2.1. [Preparation of the Cluster](#PreparationoftheCluster)
+		* 7.2.2. [Definition of EgressIP](#DefinitionofEgressIP)
+* 8. [Troubleshooting metallb](#Troubleshootingmetallb)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -2944,9 +2949,9 @@ recirc_id(0xdf0a5),dp_hash(0xd/0xf),in_port(5),eth(),eth_type(0x0800),ipv4(frag=
 
 ```
 
-## EgressIP  (openshift)
+##  7. <a name='EgressIPopenshift'></a>EgressIP  (openshift)
 
-### Background 
+###  7.1. <a name='Background-1'></a>Background 
 
 Metalb permits to expose external VIPs for Ingress Traffic by DNATtting traffic (note: we saw earlier that there can be also some SNAT as well during the NAT process).
 For egress, traffic EgressIP permits to SNAT traffic in order to expose stable VIP to extrenal servers when initating connection from the kubernetes cluster.
@@ -2954,9 +2959,9 @@ For egress, traffic EgressIP permits to SNAT traffic in order to expose stable V
 There is actually a good YT video from Franck that explains egressIP as well as plenty of other things that are covered here: 
 [MetalLB 201 - Advanced traffic steering](https://www.youtube.com/watch?v=AE50Gt54e4I).
 
-### Configuration
+###  7.2. <a name='Configuration'></a>Configuration
 
-#### Preparation of the Cluster
+####  7.2.1. <a name='PreparationoftheCluster'></a>Preparation of the Cluster
 
 From openshift 4.14.  using OVNKubernetes CNI, the gatewaymode and hostrouting must be switched if we want EgressIP for *external networks* . This is controlled thanks to the network operator with the following parameters in spec.defaultnetwork.ovnKubernetesConfig.gatewayConfig:  
 - ipForwarding: Global
@@ -2992,7 +2997,7 @@ ec2-user@eksa-cluster:~$ oc label master2       k8s.ovn.org/egress-assignable: "
 ec2-user@eksa-cluster:~$ oc label master3       k8s.ovn.org/egress-assignable: ""
 ```
 
-#### Definition of EgressIP
+####  7.2.2. <a name='DefinitionofEgressIP'></a>Definition of EgressIP
 
 The you can define your EgressIP - in this example 10.131.2.15 -, which an external network (cf oc get nodes with primary IPs in 10.87.104.0/24).
 We have two selectors for granular application of the EgressIP
@@ -3105,7 +3110,7 @@ That's better !!! but what happened ?  Simply, the master for egressIP is on a d
 
 This is not a big deal, but this behavior is worth to be aware of .
 
-## 7. <a name='Troubleshooting'></a>Troubleshooting metallb
+##  8. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
 
 Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
 
