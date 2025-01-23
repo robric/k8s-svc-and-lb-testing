@@ -2944,7 +2944,55 @@ recirc_id(0xdf0a5),dp_hash(0xd/0xf),in_port(5),eth(),eth_type(0x0800),ipv4(frag=
 
 ```
 
-##  7. <a name='Troubleshooting'></a>Troubleshooting
+## EgressIP  (openshift)
+
+### Background 
+
+Metalb permits to expose external VIPs for Ingress Traffic by DNATtting traffic (note: we saw earlier that there can be also some SNAT as well during the NAT process).
+For egress, traffic EgressIP permits to SNAT traffic in order to expose stable VIP to extrenal servers when initating connection from the kubernetes cluster.
+
+### Configuration
+
+#### Preparation of the Cluster
+
+From openshift 4.14.  using OVNKubernetes CNI, the gatewaymode must be active (cf. metallb for openshift) as well as the hostrouting. This is controlled thanks to the network operator with the following parameters in spec.defaultnetwork.ovnKubernetesConfig.gatewayConfig:  
+- ipForwarding: Global
+- routingViaHost: true
+
+```
+ec2-user@eksa-cluster:~$ oc get network.operator cluster -o yaml
+apiVersion: operator.openshift.io/v1
+kind: Network
+spec:
+[...]
+  defaultNetwork:
+    ovnKubernetesConfig:
+      egressIPConfig: {}
+      gatewayConfig:
+        ipForwarding: Global
+        routingViaHost: true
+```
+
+```
+ec2-user@eksa-cluster:~$ kubectl get egressIP -o yaml
+apiVersion: v1
+items:
+- apiVersion: k8s.ovn.org/v1
+  kind: EgressIP
+  spec:
+    egressIPs:
+    - 10.131.2.15
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: oran-smo
+    podSelector:
+      matchLabels:
+        run: test-pod
+```
+
+
+
+## 7. <a name='Troubleshooting'></a>Troubleshooting metallb
 
 Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
 
