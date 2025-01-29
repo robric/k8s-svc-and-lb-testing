@@ -2992,9 +2992,9 @@ master2   Ready    control-plane,master,worker   136d   v1.27.16+e826056   10.87
 master3   Ready    control-plane,master,worker   136d   v1.27.16+e826056   10.87.104.24   <none>        Red Hat Enterprise  [...]
 
 ec2-user@eksa-cluster:~$ 
-ec2-user@eksa-cluster:~$ oc label master1       k8s.ovn.org/egress-assignable: ""
-ec2-user@eksa-cluster:~$ oc label master2       k8s.ovn.org/egress-assignable: ""
-ec2-user@eksa-cluster:~$ oc label master3       k8s.ovn.org/egress-assignable: ""
+ec2-user@eksa-cluster:~$ oc label nodes master1 k8s.ovn.org/egress-assignable=""
+ec2-user@eksa-cluster:~$ oc label nodes master2 k8s.ovn.org/egress-assignable=""
+ec2-user@eksa-cluster:~$ oc label nodes master3 k8s.ovn.org/egress-assignable=""
 ```
 
 ####  7.2.2. <a name='DefinitionofEgressIP'></a>Definition of EgressIP
@@ -3087,7 +3087,7 @@ tcpdump: listening on stc.external, link-type EN10MB (Ethernet), capture size 26
 
 ``` 
 
-But heck ??? according to TCPDUMP the source IP is not the EgressIP (10.131.2..15) but instead it relies on the server IP on which the pod is running !!! 
+But heck ? according to TCPDUMP the source IP is not the EgressIP (10.131.2..15) but instead it relies on the server IP on which the pod is running !!! 
 
 So this does not work ?
 
@@ -3111,6 +3111,22 @@ That's better !!! but what happened ?  Simply, the master for egressIP is on a d
 This is not a big deal, but this behavior is worth to be aware of .
 
 ##  8. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
+
+Increase the log level
+
+``` 
+oc replace -f - <<EOF
+apiVersion: metallb.io/v1beta1
+kind: MetalLB
+metadata:
+  name: metallb
+  namespace: metallb-system
+spec:
+  logLevel: debug
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+```
+
 
 Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
 
