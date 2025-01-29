@@ -48,9 +48,9 @@ This page is also:
 		* 6.4.3. [Inspect iptables during when a session to VIP is initiated from the external server -----> SRC=10.131.2.3.XXXXX DST=10.131.2.14.8080](#InspectiptablesduringwhenasessiontoVIPisinitiatedfromtheexternalserver-----SRC10.131.2.3.XXXXXDST10.131.2.14.8080)
 		* 6.4.4. [2. Check packet transformation up to pod when transiting ovs-bridge br-ex -----> SRC=10.131.2.3.XXXXX DST=172.30.0.4.8080**](#Checkpackettransformationuptopodwhentransitingovs-bridgebr-ex-----SRC10.131.2.3.XXXXXDST172.30.0.4.8080)
 		* 6.4.5. [4. Packet handling in br-ex](#Packethandlinginbr-ex)
-* 7. [EgressIP  (openshift)](#EgressIPopenshift)
+* 7. [EgressIP  (openshift with OVNkubernetes only )](#EgressIPopenshiftwithOVNkubernetesonly)
 	* 7.1. [Background](#Background-1)
-	* 7.2. [Configuration](#Configuration)
+	* 7.2. [Testing](#Testing)
 		* 7.2.1. [Preparation of the Cluster](#PreparationoftheCluster)
 		* 7.2.2. [Definition of EgressIP](#DefinitionofEgressIP)
 * 8. [Troubleshooting metallb](#Troubleshootingmetallb)
@@ -2949,7 +2949,7 @@ recirc_id(0xdf0a5),dp_hash(0xd/0xf),in_port(5),eth(),eth_type(0x0800),ipv4(frag=
 
 ```
 
-##  7. <a name='EgressIPopenshift'></a>EgressIP  (openshift)
+##  7. <a name='EgressIPopenshiftwithOVNkubernetesonly'></a>EgressIP  (openshift with OVNkubernetes only )
 
 ###  7.1. <a name='Background-1'></a>Background 
 
@@ -2959,7 +2959,9 @@ For egress, traffic EgressIP permits to SNAT traffic in order to expose stable V
 There is actually a good YT video from Franck that explains egressIP as well as plenty of other things that are covered here: 
 [MetalLB 201 - Advanced traffic steering](https://www.youtube.com/watch?v=AE50Gt54e4I).
 
-###  7.2. <a name='Configuration'></a>Testing
+*Note: the configuration and tests described in this section  applies to the OVNKubernetes CNI only. This does not apply to Openshift SDN.*
+
+###  7.2. <a name='Testing'></a>Testing
 
 ####  7.2.1. <a name='PreparationoftheCluster'></a>Preparation of the Cluster
 
