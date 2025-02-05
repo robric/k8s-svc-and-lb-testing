@@ -3222,7 +3222,67 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 
 ### What happens in case of failure ?
 
-Let's create a pod that frontend a service 
+The intent of this test is to verify whether Metallb checks for pod readyness (READY state in pod) to advertise the VIP and respond to ARP request (L2 mode). 
+
+The following manifest creates a pod that fails with service IP 10.123.123.99.
+
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/test-NOT-READY-pod.yaml
+```
+
+Quick output check: we have our pod with status running but not ready.
+```
+ubuntu@vm1:~$ kubectl get pods
+NAME                          READY   STATUS    RESTARTS   AGE
+never-ready                   0/1     Running   0          5m
+ubuntu@vm1:~$ kubectl  get svc
+NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE
+kubernetes             ClusterIP      10.43.0.1      <none>           443/TCP        3h38m
+never-ready-svc        LoadBalancer   10.43.186.5    10.123.123.99    80:30258/TCP   5m2s
+[...]
+ubuntu@vm1:~$ 
+``` 
+
+Meanwhile, debugs on speaker are captured [here](../logs/debug-speaker-not-ready.log). We can see a notable difference in the traces, where we see
+
+```
+{"caller":"bgp_controller.go:152","event":"skipping should announce bgp","ips":["10.123.123.99"],"level":"debug","pool":"external-pool","protocol":"bgp","reason":"pool not matching my node","service":"default/never-ready-svc","ts":"2025-02-05T14:28:07Z"}
+{"caller":"layer2_controller.go:87","event":"shouldannounce","ips":["10.123.123.99"],"level":"debug","message":"failed no active endpoints","pool":"external-pool","protocol":"l2","service":"default/never-ready-svc","ts":"2025-02-05T14:28:07Z"}
+```
+
+When trying to reach the service, from the external VM, ARP is not resolved, which confirmed with TCPDUMP.
+
+
+```
+# generate trafic to VIP (even though there is no ping reply excepted for VIP ... but that's ok since we're just testing ARP )
+
+ubuntu@vm-ext:~$ ping 10.123.123.99
+PING 10.123.123.99 (10.123.123.99) 56(84) bytes of data.
+^C
+--- 10.123.123.99 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2049ms
+ubuntu@vm-ext:~$ 
+
+#  ARP request have no reply 
+
+ubuntu@vm2:~$ sudo tcpdump -evni ens3.100 "arp"
+tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+06:47:53.728156 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
+06:47:54.753046 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
+06:47:55.777028 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
+06:47:59.240016 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.100 tell 10.123.123.4, length 28
+
+#ARP is incomplete
+
+ubuntu@vm-ext:~$ arp -na
+? (10.42.0.23) at fa:41:32:7f:51:52 [ether] on cni0
+? (10.123.123.99) at <incomplete> on ens3.100
+
+```
+
+
+
+
 
 
 
