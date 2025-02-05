@@ -1,4 +1,4 @@
-# Testing and looking under the hood on kubernetes services: clusterIP, nodeport and metallb
+# Looking under the hood of kubernetes network abstractions: clusterIP, nodeport, metallb and EgressIP 
 
 This repo focuses on the integration of services in kubernetes from basic clusterIP to loadbalancers. More precisely the following items are covered:
 -  basic k8s service custer and nodeport wiht inspection of iptables rules for comparison with more complex scenarios.
@@ -54,6 +54,13 @@ This page is also:
 		* 7.2.1. [Preparation of the Cluster](#PreparationoftheCluster)
 		* 7.2.2. [Definition of EgressIP](#DefinitionofEgressIP)
 * 8. [Troubleshooting metallb](#Troubleshootingmetallb)
+	* 8.1. [Presentation](#Presentation)
+	* 8.2. [Change log level](#Changeloglevel)
+	* 8.3. [Trace VIP ownership](#TraceVIPownership)
+	* 8.4. [ARP responder function](#ARPresponderfunction)
+	* 8.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
+		* 8.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
+		* 8.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -3114,7 +3121,7 @@ This is not a big deal, but this behavior is worth to be aware of .
 
 ##  8. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
 
-### Presentation
+###  8.1. <a name='Presentation'></a>Presentation
 
 There is a set of pods  main pods for metallb:
  - controller (deployment): centralized control plane for metallb
@@ -3134,15 +3141,13 @@ speaker-n9cbf                             1/1     Running   0          7d4h   10
 ubuntu@vm1:~$ 
 ```
 
-### Change log level
+###  8.2. <a name='Changeloglevel'></a>Change log level
 
 You can change log verbosity in controller to debug:
 ```
 # Edit the deployment for controller and set args log to debug:
 
 ubuntu@vm1:~$ kubectl edit deployments.apps -n metallb-system controller 
-
-
 
 kind: Deployment
 metadata:
@@ -3168,7 +3173,7 @@ kind: DaemonSet
         env:
 ```
 
-### Trace VIP ownership
+###  8.3. <a name='TraceVIPownership'></a>Trace VIP ownership
 
 Check which worker is responsible for the VIP.
 
@@ -3181,7 +3186,7 @@ ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng | grep serviceAnnounc
 {"caller":"main.go:409","event":"serviceAnnounced","ips":["1.2.3.4"],"level":"info","msg":"service has IP, announcing","pool":"sctp-external-pool","protocol":"layer2","ts":"2025-02-01T18:04:08Z"}
 ```
 
-### ARP responder function
+###  8.4. <a name='ARPresponderfunction'></a>ARP responder function
 
 All speaker have ARP responder function activated. However, only the VIP master (cf previous section) will respond to ARP requests. 
 
@@ -3220,7 +3225,9 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 04:16:58.115241 52:54:00:b2:5b:52 > 52:54:00:41:4c:72, ethertype ARP (0x0806), length 60: Ethernet (len 6), IPv4 (len 4), Reply 10.123.123.100 is-at 52:54:00:b2:5b:52, length 46
 ```
 
-### What happens in case of failure ?
+###  8.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
+
+####  8.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
 
 The intent of this test is to verify whether Metallb checks for pod readyness (READY state in pod) to advertise the VIP and respond to ARP request (L2 mode). 
 
@@ -3230,7 +3237,7 @@ The following manifest creates a pod that fails with service IP 10.123.123.99.
 kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/test-NOT-READY-pod.yaml
 ```
 
-Quick output check: we have our pod with status running but not ready.
+Quick output check: we have our pod with status running but the service is not READY (some container is not READY).
 ```
 ubuntu@vm1:~$ kubectl get pods
 NAME                          READY   STATUS    RESTARTS   AGE
@@ -3250,8 +3257,7 @@ Meanwhile, debugs on speaker are captured [here](../logs/debug-speaker-not-ready
 {"caller":"layer2_controller.go:87","event":"shouldannounce","ips":["10.123.123.99"],"level":"debug","message":"failed no active endpoints","pool":"external-pool","protocol":"l2","service":"default/never-ready-svc","ts":"2025-02-05T14:28:07Z"}
 ```
 
-When trying to reach the service, from the external VM, ARP is not resolved, which confirmed with TCPDUMP.
-
+When trying to reach the service from the external VM, ARP is not resolved, which is confirmed with TCPDUMP.
 
 ```
 # generate trafic to VIP (even though there is no ping reply excepted for VIP ... but that's ok since we're just testing ARP )
@@ -3280,8 +3286,7 @@ ubuntu@vm-ext:~$ arp -na
 
 ```
 
-
-
+####  8.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
 
 
 
