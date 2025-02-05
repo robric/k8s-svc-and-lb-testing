@@ -3114,24 +3114,12 @@ This is not a big deal, but this behavior is worth to be aware of .
 
 ##  8. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
 
-Increase the log level
+### Presentation
 
-``` 
-oc replace -f - <<EOF
-apiVersion: metallb.io/v1beta1
-kind: MetalLB
-metadata:
-  name: metallb
-  namespace: metallb-system
-spec:
-  logLevel: debug
-  nodeSelector:
-    node-role.kubernetes.io/worker: ""
-```
-
-
-Checks the logs of the speaker to track ownership of VIP. This is actually a daemonset that runs in the hostnetwork.
-
+There is a set of pods  main pods for metallb:
+ - controller (deployment): centralized control plane for metallb
+ - speaker (daemonset): a pod runs on each node. It is notably responsible for responding to ARP in L2 when elected as Master for a VIP. 
+ - frr: optional when you want to use frr (BGP). 
 ```
 ubuntu@vm1:~$ kubectl get pods -o wide -n metallb-system 
 NAME                                      READY   STATUS    RESTARTS   AGE    IP             NODE   NOMINATED NODE   READINESS GATES
@@ -3144,13 +3132,99 @@ speaker-lklxw                             1/1     Running   0          7d4h   10
 frr-k8s-daemon-h7rh6                      6/6     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
 speaker-n9cbf                             1/1     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
 ubuntu@vm1:~$ 
+```
 
-#
-# This is where you see how ARP are generated 
-#
+### Change log level
 
-ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-gq27n  | grep -i arp
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2024-06-12T12:31:56Z"}
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2024-06-12T12:31:56Z"}
+You can change log verbosity in controller to debug:
+```
+# Edit the deployment for controller and set args log to debug:
+
+ubuntu@vm1:~$ kubectl edit deployments.apps -n metallb-system controller 
+
+
+
+kind: Deployment
+metadata:
+[...]
+    spec:
+      containers:
+      - args:
+        - --port=7472
+        - --log-level=debug
+
+# Edit the daemonset for speakers and set args log to debug:
+
+ubuntu@vm1:~$ kubectl  edit daemonsets.apps -n metallb-system speaker 
+
+apiVersion: apps/v1
+kind: DaemonSet
+[...]
+    spec:
+      containers:
+      - args:
+        - --port=7472
+        - --log-level=debug
+        env:
+```
+
+### Trace VIP ownership
+
+Check which worker is responsible for the VIP.
+
+You can check the log (info good enough) of speakers. The server that is responsible for a VIP has a a specific "serviceAnnounced" event.  
+
+```console
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-89b29 | grep serviceAnnounced
+{"caller":"main.go:409","event":"serviceAnnounced","ips":["10.123.123.100"],"level":"info","msg":"service has IP, announcing","pool":"external-pool","protocol":"layer2","ts":"2025-02-05T10:14:46Z"}```
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng | grep serviceAnnounced
+{"caller":"main.go:409","event":"serviceAnnounced","ips":["1.2.3.4"],"level":"info","msg":"service has IP, announcing","pool":"sctp-external-pool","protocol":"layer2","ts":"2025-02-01T18:04:08Z"}
+```
+
+### ARP responder function
+
+All speaker have ARP responder function activated. However, only the VIP master (cf previous section) will respond to ARP requests. 
 
 ```
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-89b29 |grep ARP
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:05Z"}
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:05Z"}
+
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng  |grep ARP
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:07Z"}
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:07Z"}
+
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-96jn5 |grep ARP
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:01Z"}
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:01Z"}
+```
+
+With severity log "debug", we can trace every ARP request and have information on its content.
+Below is a capture on a speaker that owns the VIP in case of ARP request to the VIP. Here 10.123.123.4 is the requester.
+
+```
+ubuntu@vm1:~$ kubectl  logs -n metallb-system speaker-4xqf5  -f 
+{"caller":"net.go:962","component":"Memberlist","level":"debug","msg":"memberlist: Initiating push/pull sync with: vm3 10.65.94.59:7946","ts":"2025-02-05T12:10:00Z"}
+{"caller":"arp.go:110","interface":"ens3","ip":"10.123.123.100","level":"debug","msg":"got ARP request for service IP, sending response","responseMAC":"52:54:00:b2:5b:52","senderIP":"10.123.123.4","senderMAC":"52:54:00:41:4c:72","ts":"2025-02-05T12:10:03Z"}
+{"caller":"arp.go:110","interface":"ens3.100","ip":"10.123.123.100","level":"debug","msg":"got ARP request for service IP, sending response","responseMAC":"52:54:00:b2:5b:52","senderIP":"10.123.123.4","senderMAC":"52:54:00:41:4c:72","ts":"2025-02-05T12:10:03Z"}
+[...]
+```
+
+This trace mapsto the TCPDUMP capture for ARP on the master (vm2 here with MAC 52:54:00:41:4c:72):
+
+```
+ubuntu@vm2:~$ sudo tcpdump -evni ens3.100 "arp"
+tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+
+04:16:58.115088 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.100 tell 10.123.123.4, length 28
+04:16:58.115241 52:54:00:b2:5b:52 > 52:54:00:41:4c:72, ethertype ARP (0x0806), length 60: Ethernet (len 6), IPv4 (len 4), Reply 10.123.123.100 is-at 52:54:00:b2:5b:52, length 46
+```
+
+### What happens in case of failure ?
+
+Let's create a pod that frontend a service 
+
+
+
+
+
