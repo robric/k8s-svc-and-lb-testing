@@ -3288,8 +3288,13 @@ ubuntu@vm-ext:~$ arp -na
 
 ####  8.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
 
+This is a slight variation of previous test to see how Metallb reacts on pod change.
 
+Use the following manifest for bringing up the test scenario.
 
+```
+https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/test-READY-to-NOT-READY-pod.yaml
+```
 
 
 
