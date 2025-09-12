@@ -178,7 +178,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 10.123.123.64-10.123.123.64
+  - 10.123.123.200-10.123.123.210
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
