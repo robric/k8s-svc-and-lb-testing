@@ -53,14 +53,18 @@ This page is also:
 	* 7.2. [Testing](#Testing)
 		* 7.2.1. [Preparation of the Cluster](#PreparationoftheCluster)
 		* 7.2.2. [Definition of EgressIP](#DefinitionofEgressIP)
-* 8. [Troubleshooting metallb](#Troubleshootingmetallb)
-	* 8.1. [Presentation](#Presentation)
-	* 8.2. [Change log level](#Changeloglevel)
-	* 8.3. [Trace VIP ownership](#TraceVIPownership)
-	* 8.4. [ARP responder function](#ARPresponderfunction)
-	* 8.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
-		* 8.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
-		* 8.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
+* 8. [Ingress integration](#Ingressintegration)
+	* 8.1. [Background](#Background-1)
+	* 8.2. [Deployment](#Deployment)
+	* 8.3. [Tests and observations](#Testsandobservations)
+* 9. [Troubleshooting metallb](#Troubleshootingmetallb)
+	* 9.1. [Presentation](#Presentation)
+	* 9.2. [Change log level](#Changeloglevel)
+	* 9.3. [Trace VIP ownership](#TraceVIPownership)
+	* 9.4. [ARP responder function](#ARPresponderfunction)
+	* 9.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
+		* 9.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
+		* 9.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -3119,9 +3123,217 @@ That's better !!! but what happened ?  Simply, the master for egressIP is on a d
 
 This is not a big deal, but this behavior is worth to be aware of .
 
-##  8. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
+##  8. <a name='Ingressintegration'></a>Ingress integration
 
-###  8.1. <a name='Presentation'></a>Presentation
+###  8.1. <a name='Background-1'></a>Background
+
+Ingress permits to add L7 Load balancing on top of metallb. Note that this setup relies on k3S where traefik is already integrated.
+
+###  8.2. <a name='Deployment'></a>Deployment 
+
+The following manifest deployes a topology for testing an ingress controller exposing an external IP via metallb.
+```console
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/nginx-dep-3-rep-2-apps.yaml
+```
+This results in the following elements
+- Two applications app1 and app2 (nginx) with the associated service.
+- An ingress routing to app1 based on the hostname.
+- Metallb configuration: mlb is actually integrated in k3s so no need to define the service.
+ 
+```
+         vm1                   vm2                   vm3          
++-------------------+ +-------------------+ +-------------------+ 
+|  +-------------+  | |  +-------------+  | |  +-------------+  | 
+|  |  pod app1   |  | |  |  pod app1   |  | |  |  pod app1   |  | 
+|  +------|------+  | |  +------|------+  | |  +------|------+  |
+|       <------------------ svc app1 ------------------->       |
+|                   | |                   | |                   | 
+|                   | |                   | |                   |
+|  +-------------+  | |  +-------------+  | |  +-------------+  | 
+|  |  pod app2   |  | |  |  pod app2   |  | |  |  pod app2   |  | 
+|  +------|------+  | |  +------|------+  | |  +------|------+  | 
+|       <------------------ svc app2 ------------------->       |
+|                   | |                   | |                   |  
+|                   | |                   | |                   |  
+|    +----------------------------------------------------+     |  
+|    | ** INGRESS TRAEFIK                                 |     |
+|    |             host app1.foo ---> SVC app1            |     | 
+|    |             host app2.foo ---> SVC app2            |     | 
+|    +----------------------------------------------------+     |
+|                   | |                   | |                   | 
+|                   | |                   | |                   | 
+|                   | |                   | |                   | 
++---------|---------+ +----------|--------+ +---------|---------+ 
+  ens3.100|.1            ens3.100|            ens3.100|           
+          |                      |                    |           
+          |                      |                    |           
+     +----------------------------------------------------+       
+     |             MLB     VIP 10.123.123.200             |       
+     +----------------------------------------------------+       
+          |                      |                    |           
+          ---------------------------------------------           
+                        vlan external network                     
+                           10.123.123.0/24                        
+                                 |                                
+                                 |.4                              
+          +-------------------------------------------------+
+          |                                                 | 
+          | curl -H "Host: app1.foo" http://10.123.123.200  |
+          |                                                 | 
+          | curl -H "Host: app2.foo" http://10.123.123.200  |
+          |                                                 | 
+          +-------------------------------------------------+
+```
+Traces deployment and svc:
+```
+ubuntu@vm1:~$ kubectl get svc -o wide -A
+NAMESPACE        NAME                      TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                      AGE     SELECTOR
+default          app1                      ClusterIP      10.43.146.218   <none>           80/TCP                       163m    app=app1
+default          app2                      ClusterIP      10.43.202.115   <none>           80/TCP                       163m    app=app2
+kube-system      traefik                   LoadBalancer   10.43.30.215    10.123.123.200   80:32723/TCP,443:31748/TCP   3h32m   app.kubernetes.io/instance=traefik-kube-system,app.kubernetes.io/name=traefik
+[...]
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ kubectl  get pods -o wide
+NAME                    READY   STATUS    RESTARTS   AGE    IP           NODE   NOMINATED NODE   READINESS GATES
+app1-664b65cb7c-6qgvh   1/1     Running   0          161m   10.42.1.5    vm2    <none>           <none>
+app1-664b65cb7c-6rfnf   1/1     Running   0          161m   10.42.3.4    vm3    <none>           <none>
+app1-664b65cb7c-hf8b2   1/1     Running   0          161m   10.42.0.10   vm1    <none>           <none>
+app2-79775d4cc6-6dnc4   1/1     Running   0          161m   10.42.0.11   vm1    <none>           <none>
+app2-79775d4cc6-jzs85   1/1     Running   0          161m   10.42.3.5    vm3    <none>           <none>
+app2-79775d4cc6-zwk42   1/1     Running   0          161m   10.42.1.6    vm2    <none>           <none>
+ubuntu@vm1:~$ 
+```
+
+For conviency, the configuration of the controller is displayed here.
+
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: traefik-ingress
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: app1.foo
+    http:
+      paths:
+      - backend:
+          service:
+            name: app1
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  - host: app2.foo
+    http:
+      paths:
+      - backend:
+          service:
+            name: app2
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+```
+We can check the immediatly the integration with a Load Balancer (external address in use).
+```
+ubuntu@vm1:~$ kubectl get ingress
+NAME              CLASS     HOSTS               ADDRESS          PORTS   AGE
+traefik-ingress   traefik   app1.foo,app2.foo   10.123.123.200   80      135m
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ kubectl get ingress -o yaml 
+[...]]  
+   status:
+    loadBalancer:
+      ingress:
+      - ip: 10.123.123.200
+```
+###  8.3. <a name='Testsandobservations'></a>Tests and observations
+
+We can test with curl from the external vm (vm-ext).
+
+```
+
+ubuntu@vm-ext:~$ curl -H "Host: app1.foo" http://10.123.123.200
+Welcome to NGINX!
+Application:       app1
+Pod Name:          app1-664b65cb7c-6rfnf
+IP:                10.42.3.4
+RequestPort:       8080
+ubuntu@vm-ext:~$ curl -H "Host: app2.foo" http://10.123.123.200
+Welcome to NGINX!
+Application:       app2
+Pod Name:          app2-79775d4cc6-6dnc4
+IP:                10.42.0.11
+RequestPort:       8080
+ubuntu@vm-ext:~$ 
+
+Or via DNS
+
+root@vm-ext:~# echo "10.123.123.200 app1.foo" >> /etc/hosts
+root@vm-ext:~# curl app1.foo
+Welcome to NGINX!
+Application:       app1
+Pod Name:          app1-664b65cb7c-hf8b2
+IP:                10.42.0.10
+RequestPort:       8080
+root@vm-ext:~# 
+```
+
+We can see the mutliple layers of NAT and address mapping (NB: L7 LB is not natting, but creating new sessions)
+
+``` 
+
+    [NEW] tcp      6 120 SYN_SENT src=10.123.123.4 dst=10.123.123.200 sport=49562 dport=80 [UNREPLIED] src=10.42.0.7 dst=10.42.0.1 sport=8000 dport=33229
+    [NEW] tcp      6 120 SYN_SENT src=10.42.0.7 dst=10.42.3.5 sport=48846 dport=8080 [UNREPLIED] src=10.42.3.5 dst=10.42.0.7 sport=8080 dport=48846
+
+Initial Request
+S = 10.123.123.4     D = 10.123.123.200, dport 80 
+NAT Metallb to Traefik proxy
+S = 10.42.0.1        D = 10.42.0.7, dport 8000
+Traefik proxy to pod
+S = 10.42.0.7        D = 10.42.3.5, dport 8080
+```
+
+Yep trafic lands on traefik with port 8000 ! This is achieved with some string indirection "web" as target port. When metallb is configured with a string as targetport it gets the actual value from the destination container spec for ports.
+
+```
+ubuntu@vm1:~$ kubectl get svc -n kube-system traefik -o yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    metallb.io/ip-allocated-from-pool: external-pool
+[...]]
+spec:
+[...]
+  ports:
+  - name: web
+    nodePort: 32723
+    port: 80
+    protocol: TCP
+    targetPort: web
+
+ubuntu@vm1:~$ kubectl get deployments.apps -n kube-system traefik  -o yaml 
+apiVersion: apps/v1
+kind: Deployment
+[...]
+    spec:
+[...]
+      - args:
+      [...]
+        - --entryPoints.web.address=:8000/tcp
+        ports:
+[...]
+        - containerPort: 8000
+          name: web
+          protocol: TCP
+
+```
+
+##  9. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
+
+###  9.1. <a name='Presentation'></a>Presentation
 
 There is a set of pods  main pods for metallb:
  - controller (deployment): centralized control plane for metallb
@@ -3141,7 +3353,7 @@ speaker-n9cbf                             1/1     Running   0          7d4h   10
 ubuntu@vm1:~$ 
 ```
 
-###  8.2. <a name='Changeloglevel'></a>Change log level
+###  9.2. <a name='Changeloglevel'></a>Change log level
 
 You can change log verbosity in controller to debug:
 ```
@@ -3173,7 +3385,7 @@ kind: DaemonSet
         env:
 ```
 
-###  8.3. <a name='TraceVIPownership'></a>Trace VIP ownership
+###  9.3. <a name='TraceVIPownership'></a>Trace VIP ownership
 
 Check which worker is responsible for the VIP.
 
@@ -3186,7 +3398,7 @@ ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng | grep serviceAnnounc
 {"caller":"main.go:409","event":"serviceAnnounced","ips":["1.2.3.4"],"level":"info","msg":"service has IP, announcing","pool":"sctp-external-pool","protocol":"layer2","ts":"2025-02-01T18:04:08Z"}
 ```
 
-###  8.4. <a name='ARPresponderfunction'></a>ARP responder function
+###  9.4. <a name='ARPresponderfunction'></a>ARP responder function
 
 All speaker have ARP responder function activated. However, only the VIP master (cf previous section) will respond to ARP requests. 
 
@@ -3225,9 +3437,9 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 04:16:58.115241 52:54:00:b2:5b:52 > 52:54:00:41:4c:72, ethertype ARP (0x0806), length 60: Ethernet (len 6), IPv4 (len 4), Reply 10.123.123.100 is-at 52:54:00:b2:5b:52, length 46
 ```
 
-###  8.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
+###  9.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
 
-####  8.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
+####  9.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
 
 The intent of this test is to verify whether Metallb checks for pod readyness (READY state in pod) to advertise the VIP and respond to ARP request (L2 mode). 
 
@@ -3286,7 +3498,7 @@ ubuntu@vm-ext:~$ arp -na
 
 ```
 
-####  8.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
+####  9.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
 
 This is a slight variation of previous test to see how Metallb reacts on pod change.
 
