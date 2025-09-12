@@ -193,7 +193,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-  - host: rapp1.foo
+  - host: app1.foo
     http:
       paths:
       - backend:
@@ -203,7 +203,7 @@ spec:
               number: 80
         path: /
         pathType: Prefix
-  - host: rapp2.foo
+  - host: app2.foo
     http:
       paths:
       - backend:
