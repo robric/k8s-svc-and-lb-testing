@@ -40,7 +40,34 @@ spec:
         app: app1
     spec:
       containers:
-      - env:
+      - image: nginx:latest
+        name: nginx
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources: {}
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: nginx-config
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          export POD_NAME
+          export POD_IP
+          export APP_NAME
+          cat <<EOF > /nginx/nginx.conf
+          server {
+              listen 8080;
+              server_name localhost;
+              location / {
+                  default_type text/plain;
+                  return 200 "Welcome to NGINX!\nApplication:       $APP_NAME\nPod Name:          $POD_NAME\nIP:                $POD_IP\nRequestPort:       \$server_port\n";
+              }
+          }
+          EOF
+        env:
         - name: POD_NAME
           valueFrom:
             fieldRef:
@@ -51,19 +78,18 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: status.podIP
-        image: nginx:latest
-        imagePullPolicy: Always
-        name: nginx
-        ports:
-        - containerPort: 8080
-          protocol: TCP
+        - name: APP_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
+        image: busybox:latest
+        name: render-nginx-config
         volumeMounts:
-        - mountPath: /etc/nginx/conf.d
+        - mountPath: /nginx
           name: nginx-config
       restartPolicy: Always
       volumes:
-      - configMap:
-          name: nginx-conf
+      - emptyDir: {}
         name: nginx-config
 ---
 apiVersion: apps/v1
@@ -97,13 +123,14 @@ spec:
         - |
           export POD_NAME
           export POD_IP
+          export APP_NAME
           cat <<EOF > /nginx/nginx.conf
           server {
               listen 8080;
               server_name localhost;
               location / {
                   default_type text/plain;
-                  return 200 "Welcome to NGINX!\nPod: $POD_NAME\nIP: $POD_IP\n" ;
+                  return 200 "Welcome to NGINX!\nApplication:       $APP_NAME\nPod Name:          $POD_NAME\nIP:                $POD_IP\nRequestPort:       \$server_port\n";
               }
           }
           EOF
@@ -118,6 +145,10 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: status.podIP
+        - name: APP_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
         image: busybox:latest
         name: render-nginx-config
         volumeMounts:
