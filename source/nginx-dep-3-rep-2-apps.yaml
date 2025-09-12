@@ -159,18 +159,6 @@ spec:
       - emptyDir: {}
         name: nginx-config
 ---
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: nginx-conf
-  namespace: default
-data:
-  default.conf: |
-    server {
-      listen 8080;
-      server_name localhost;
-    }
----
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -213,4 +201,3 @@ spec:
               number: 80
         path: /
         pathType: Prefix
-
