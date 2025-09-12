@@ -3331,6 +3331,46 @@ kind: Deployment
 
 ```
 
+We can now create a second metallb ourself 'custom-mlb' to reach trafic via another external IP address (basically skipping the automated magic that k3s enforced).
+
+```
+ubuntu@vm1:~$ kubectl apply -f - <<EOF 
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-custom-mlb
+  namespace: kube-system
+spec:
+  loadBalancerIP: 10.123.123.210
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8000
+  selector:
+    app.kubernetes.io/name: traefik
+  type: LoadBalancer
+EOF
+service/traefik-custom-mlb created
+ubuntu@vm1:~$ kubectl get svc -A
+NAMESPACE        NAME                      TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                      AGE
+default          app1                      ClusterIP      10.43.146.218   <none>           80/TCP                       3h21m
+default          app2                      ClusterIP      10.43.202.115   <none>           80/TCP                       3h21m
+default          kubernetes                ClusterIP      10.43.0.1       <none>           443/TCP                      4h10m
+kube-system      kube-dns                  ClusterIP      10.43.0.10      <none>           53/UDP,53/TCP,9153/TCP       4h10m
+kube-system      metrics-server            ClusterIP      10.43.22.229    <none>           443/TCP                      4h10m
+kube-system      traefik                   LoadBalancer   10.43.30.215    10.123.123.200   80:32723/TCP,443:31748/TCP   4h9m
+kube-system      traefik-custom-mlb        LoadBalancer   10.43.226.176   10.123.123.210   80:32651/TCP                 9s
+metallb-system   metallb-webhook-service   ClusterIP      10.43.163.86    <none>           443/TCP                      3h59m
+
+ubuntu@vm1:~$ curl  10.123.123.210  -H "host: app1.foo"
+Welcome to NGINX!
+Application:       app1
+Pod Name:          app1-664b65cb7c-hf8b2
+IP:                10.42.0.10
+RequestPort:       8080
+ubuntu@vm1:~$ 
+
 ##  9. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
 
 ###  9.1. <a name='Presentation'></a>Presentation
