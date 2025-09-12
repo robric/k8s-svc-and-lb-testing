@@ -57,6 +57,7 @@ This page is also:
 	* 8.1. [Background](#Background-1)
 	* 8.2. [Deployment](#Deployment)
 	* 8.3. [Tests and observations](#Testsandobservations)
+	* 8.4. [IngressRoute (traefik)](#IngressRoutetraefik)
 * 9. [Troubleshooting metallb](#Troubleshootingmetallb)
 	* 9.1. [Presentation](#Presentation)
 	* 9.2. [Change log level](#Changeloglevel)
@@ -3363,6 +3364,8 @@ kube-system      traefik                   LoadBalancer   10.43.30.215    10.123
 kube-system      traefik-custom-mlb        LoadBalancer   10.43.226.176   10.123.123.210   80:32651/TCP                 9s
 metallb-system   metallb-webhook-service   ClusterIP      10.43.163.86    <none>           443/TCP                      3h59m
 
+##### and this just works all the same but we're in charge :-) 
+
 ubuntu@vm1:~$ curl  10.123.123.210  -H "host: app1.foo"
 Welcome to NGINX!
 Application:       app1
@@ -3370,6 +3373,59 @@ Pod Name:          app1-664b65cb7c-hf8b2
 IP:                10.42.0.10
 RequestPort:       8080
 ubuntu@vm1:~$ 
+
+```
+
+###  8.4. <a name='IngressRoutetraefik'></a>IngressRoute (traefik)
+
+Now let's delete the ingress rule and use Traefik CRDs instead (ingressroute). Both resources have same objectives wrt L7 load balancing. However, Ingress is a generic kubernetes resource, hence it is more limited than traefik CRDs which allows more advanced control !
+
+
+```
+kubectl delete ingress traefik-ingress
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/ingressroute.yaml
+```
+
+For quick reference here is the config. We use endpoint to steer the requests for a change. 
+
+```
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: path-based-ingressroute
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: PathPrefix(`/app1`)
+    kind: Rule
+    services:
+    - name: app1
+      port: 80
+  - match: PathPrefix(`/app2`)
+    kind: Rule
+    services:
+    - name: app2
+      port: 80
+```
+and that just works.
+```
+ubuntu@vm-ext:~$ curl  http://10.123.123.200/app1
+Welcome to NGINX!
+Application:       app1
+Pod Name:          app1-664b65cb7c-6rfnf
+IP:                10.42.3.4
+RequestPort:       8080
+ubuntu@vm-ext:~$ curl  http://10.123.123.200/app2
+Welcome to NGINX!
+Application:       app2
+Pod Name:          app2-79775d4cc6-jzs85
+IP:                10.42.3.5
+RequestPort:       8080
+ubuntu@vm-ext:~$ 
+```
+
 
 ##  9. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
 

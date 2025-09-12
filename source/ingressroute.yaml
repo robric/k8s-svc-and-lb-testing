@@ -1,0 +1,19 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: path-based-ingressroute
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: PathPrefix(`/app1`)
+    kind: Rule
+    services:
+    - name: app1
+      port: 80
+  - match: PathPrefix(`/app2`)
+    kind: Rule
+    services:
+    - name: app2
+      port: 80
