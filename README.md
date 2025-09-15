@@ -58,14 +58,16 @@ This page is also:
 	* 8.2. [Deployment](#Deployment)
 	* 8.3. [Tests and observations](#Testsandobservations)
 	* 8.4. [IngressRoute (traefik)](#IngressRoutetraefik)
-* 9. [Troubleshooting metallb](#Troubleshootingmetallb)
-	* 9.1. [Presentation](#Presentation)
-	* 9.2. [Change log level](#Changeloglevel)
-	* 9.3. [Trace VIP ownership](#TraceVIPownership)
-	* 9.4. [ARP responder function](#ARPresponderfunction)
-	* 9.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
-		* 9.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
-		* 9.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
+* 9. [Linkerd](#Linkerd)
+	* 9.1. [Installation](#Installation)
+* 10. [Metallb Troubleshooting tips](#MetallbTroubleshootingtips)
+	* 10.1. [Presentation](#Presentation)
+	* 10.2. [Change log level](#Changeloglevel)
+	* 10.3. [Trace VIP ownership](#TraceVIPownership)
+	* 10.4. [ARP responder function](#ARPresponderfunction)
+	* 10.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
+		* 10.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
+		* 10.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -3426,10 +3428,209 @@ RequestPort:       8080
 ubuntu@vm-ext:~$ 
 ```
 
+##  9. <a name='Linkerd'></a>Linkerd 
 
-##  9. <a name='Troubleshootingmetallb'></a>Troubleshooting metallb
+###  9.1. <a name='Installation'></a>Installation
 
-###  9.1. <a name='Presentation'></a>Presentation
+The mainstream installation was not working.
+
+```
+ubuntu@vm1:~$ curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install-edge | sh
+
+
+^C
+ubuntu@vm1:~$ curl https://run.linkerd.io/install-edge -vv
+*   Trying 104.21.32.1:443...
+*   Trying 2606:4700:3030::6815:6001:443...
+* Immediate connect fail for 2606:4700:3030::6815:6001: Network is unreachable
+*   Trying 2606:4700:3030::6815:4001:443...
+* Immediate connect fail for 2606:4700:3030::6815:4001: Network is unreachable
+```
+
+So I used the BEL "https://www.buoyant.io/linkerd-enterprise" version (enterprise distribution).
+
+```
+curl --proto '=https' --tlsv1.2 -sSfL https://enterprise.buoyant.io/install | sh 
+export PATH=/home/ubuntu/.linkerd2/bin:$PATH
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+```
+
+After these steps, linkerd is installed.
+
+```console
+ubuntu@vm1:~$ linkerd version --client
+Client version: enterprise-2.18.3
+ubuntu@vm1:~$ linkerd check --pre
+kubernetes-api
+--------------
+√ can initialize the client
+√ can query the Kubernetes API
+
+kubernetes-version
+------------------
+√ is running the minimum Kubernetes API version
+
+pre-kubernetes-setup
+--------------------
+√ control plane namespace does not already exist
+√ can create non-namespaced resources
+√ can create ServiceAccounts
+√ can create Services
+√ can create Deployments
+√ can create CronJobs
+√ can create ConfigMaps
+√ can create Secrets
+√ can read Secrets
+√ can read extension-apiserver-authentication configmap
+√ no clock skew detected
+
+linkerd-version
+---------------
+√ can determine the latest version
+√ cli is up-to-date
+
+Status check results are √
+ubuntu@vm1:~$ 
+```
+Ah you need a licence...
+```
+ubuntu@vm1:~$ linkerd install | kubectl apply -f -
+Error: BUOYANT_LICENSE env var, license, or licenseSecret must be set
+Usage:
+  linkerd install [flags]
+
+Examples:
+  # Install CRDs first.
+  linkerd install --crds | kubectl apply -f -
+
+  # Install the core control plane.
+
+``` 
+Indeed this is the enterprise version, but you can get a free licence on the ![buoyant website]({E11725E9-9406-4A87-B9C5-4F89CAF6761B}.png), which is good for tests since it is valid for up to 100 pods. You need to create a workspace first - that's very quick -.
+Now let's roll as per doc says (we just toggled linkerd installGatewayAPI=true to false)
+
+```
+export BUOYANT_LICENSE=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJCdW95YW50IEluYyIsInN1YiI6ImxpY2Vuc2UiLCJhdWQiOiJ0b3RvIiwiZXhwIjo0MTAyNDQ0ODAwLCJDbGllbnRJRCI6InBWYUhzdVdiSms3WEk5cnQiLCJDbGllbnRTZWNyZXQiOiI5YjEzZjg4YWI2YTZlODA0MzE4YWJjODY2MjQ0YWNjOTdhZDljYjMxNTEzZWYwOTUwMTMzYzcyZjBkNWNmNmNhIiwiUHJvZHVjdCI6IkJFTCIsIlZlcnNpb24iOjIsIk1hbmFnZWRDb250cm9sUGxhbmVFbmFibGVkIjp0cnVlLCJNYW5hZ2VkRGF0YVBsYW5lRW5hYmxlZCI6dHJ1ZSwiRW50ZXJwcmlzZUVuYWJsZWQiOnRydWUsIkhBWkxFbmFibGVkIjpmYWxzZSwiRklQU0VuYWJsZWQiOmZhbHNlLCJQYXRjaFJlbGVhc2VzRW5hYmxlZCI6ZmFsc2V9.K-2XOKq7qlfe1IX1-6ZDvI5NNkJINJqxDaQzneziqmJvNCmDdp4uWaRAg3OJ2ncEqO_t4n6rtgmfOlX90W6fgA
+linkerd install --crds --set installGatewayAPI=true | kubectl apply -f -
+linkerd install | kubectl apply -f -
+```
+ok it almost worked. It looks like K3s installed some gateway extensions.
+```
+ubuntu@vm1:~$ linkerd install --crds --set installGatewayAPI=true | kubectl apply -f -
+Linkerd cannot install the Gateway API CRDs because they are already installed by an external source. Please set `installGatewayAPI` to `false`.
+error: no objects passed to apply
+ubuntu@vm1:~$ linkerd install --crds --set installGatewayAPI=false | kubectl apply -f -
+Rendering Linkerd CRDs...
+Next, run `linkerd install | kubectl apply -f -` to install the control plane.
+
+customresourcedefinition.apiextensions.k8s.io/authorizationpolicies.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/egressnetworks.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/httplocalratelimitpolicies.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/httproutes.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/meshtlsauthentications.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/networkauthentications.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/serverauthorizations.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/servers.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/serviceprofiles.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/externalworkloads.workload.linkerd.io created
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ linkerd install | kubectl apply -f -
+namespace/linkerd created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+serviceaccount/linkerd-identity created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+serviceaccount/linkerd-destination created
+secret/linkerd-sp-validator-k8s-tls created
+validatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-sp-validator-webhook-config created
+secret/linkerd-policy-validator-k8s-tls created
+validatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-policy-validator-webhook-config created
+clusterrole.rbac.authorization.k8s.io/linkerd-policy created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-destination-policy created
+role.rbac.authorization.k8s.io/remote-discovery created
+rolebinding.rbac.authorization.k8s.io/linkerd-destination-remote-discovery created
+role.rbac.authorization.k8s.io/linkerd-heartbeat created
+rolebinding.rbac.authorization.k8s.io/linkerd-heartbeat created
+clusterrole.rbac.authorization.k8s.io/linkerd-heartbeat created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-heartbeat created
+serviceaccount/linkerd-heartbeat created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+serviceaccount/linkerd-proxy-injector created
+secret/linkerd-proxy-injector-k8s-tls created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-proxy-injector-webhook-config created
+configmap/linkerd-config created
+secret/buoyant-license created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-enterprise created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-enterprise created
+role.rbac.authorization.k8s.io/linkerd-enterprise created
+rolebinding.rbac.authorization.k8s.io/linkerd-enterprise created
+serviceaccount/linkerd-enterprise created
+service/linkerd-enterprise created
+deployment.apps/linkerd-enterprise created
+role.rbac.authorization.k8s.io/ext-namespace-metadata-linkerd-config created
+secret/linkerd-identity-issuer created
+configmap/linkerd-identity-trust-roots created
+service/linkerd-identity created
+service/linkerd-identity-headless created
+deployment.apps/linkerd-identity created
+service/linkerd-dst created
+service/linkerd-dst-headless created
+service/linkerd-sp-validator created
+service/linkerd-policy created
+service/linkerd-policy-validator created
+Warning: spec.template.spec.containers[2].ports[1]: duplicate port name "admin-http" with spec.template.spec.containers[1].ports[1], services and probes that select ports by name will use spec.template.spec.containers[1].ports[1]
+Warning: spec.template.spec.containers[3].ports[0]: duplicate port name "grpc" with spec.template.spec.containers[1].ports[0], services and probes that select ports by name will use spec.template.spec.containers[1].ports[0]
+Warning: spec.template.spec.containers[3].ports[1]: duplicate port name "admin-http" with spec.template.spec.containers[1].ports[1], services and probes that select ports by name will use spec.template.spec.containers[1].ports[1]
+deployment.apps/linkerd-destination created
+cronjob.batch/linkerd-heartbeat created
+deployment.apps/linkerd-proxy-injector created
+service/linkerd-proxy-injector created
+secret/linkerd-config-overrides created
+ubuntu@vm1:~$ 
+
+ubuntu@vm1:~$ kubectl api-resources | grep linker
+serviceprofiles                     sp                         linkerd.io/v1alpha2                 true         ServiceProfile
+authorizationpolicies               authzpolicy                policy.linkerd.io/v1alpha1          true         AuthorizationPolicy
+egressnetworks                                                 policy.linkerd.io/v1alpha1          true         EgressNetwork
+httplocalratelimitpolicies                                     policy.linkerd.io/v1alpha1          true         HTTPLocalRateLimitPolicy
+httproutes                                                     policy.linkerd.io/v1beta3           true         HTTPRoute
+meshtlsauthentications              meshtlsauthn               policy.linkerd.io/v1alpha1          true         MeshTLSAuthentication
+networkauthentications              netauthn,networkauthn      policy.linkerd.io/v1alpha1          true         NetworkAuthentication
+serverauthorizations                saz,serverauthz,srvauthz   policy.linkerd.io/v1beta1           true         ServerAuthorization
+servers                             srv                        policy.linkerd.io/v1beta3           true         Server
+externalworkloads                                              workload.linkerd.io/v1beta1         true         ExternalWorkload
+ubuntu@vm1:~$ 
+
+ubuntu@vm1:~$ kubectl get svc -A
+NAMESPACE        NAME                        TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                      AGE
+default          app1                        ClusterIP      10.43.146.218   <none>           80/TCP                       3d4h
+default          app2                        ClusterIP      10.43.202.115   <none>           80/TCP                       3d4h
+default          kubernetes                  ClusterIP      10.43.0.1       <none>           443/TCP                      3d5h
+kube-system      kube-dns                    ClusterIP      10.43.0.10      <none>           53/UDP,53/TCP,9153/TCP       3d5h
+kube-system      metrics-server              ClusterIP      10.43.22.229    <none>           443/TCP                      3d5h
+kube-system      traefik                     LoadBalancer   10.43.30.215    10.123.123.200   80:32723/TCP,443:31748/TCP   3d5h
+kube-system      traefik-custom-mlb          LoadBalancer   10.43.226.176   10.123.123.210   80:32651/TCP                 3d
+linkerd          linkerd-dst                 ClusterIP      10.43.172.162   <none>           8086/TCP                     19s
+linkerd          linkerd-dst-headless        ClusterIP      None            <none>           8086/TCP                     19s
+linkerd          linkerd-enterprise          ClusterIP      10.43.246.42    <none>           8082/TCP                     19s
+linkerd          linkerd-identity            ClusterIP      10.43.58.90     <none>           8080/TCP                     19s
+linkerd          linkerd-identity-headless   ClusterIP      None            <none>           8080/TCP                     19s
+linkerd          linkerd-policy              ClusterIP      None            <none>           8090/TCP                     19s
+linkerd          linkerd-policy-validator    ClusterIP      10.43.101.247   <none>           443/TCP                      19s
+linkerd          linkerd-proxy-injector      ClusterIP      10.43.185.217   <none>           443/TCP                      19s
+linkerd          linkerd-sp-validator        ClusterIP      10.43.149.191   <none>           443/TCP                      19s
+metallb-system   metallb-webhook-service     ClusterIP      10.43.163.86    <none>           443/TCP                      3d4h
+ubuntu@vm1:~$ 
+```
+
+
+
+
+##  10. <a name='MetallbTroubleshootingtips'></a>Metallb Troubleshooting tips
+
+###  10.1. <a name='Presentation'></a>Presentation
 
 There is a set of pods  main pods for metallb:
  - controller (deployment): centralized control plane for metallb
@@ -3449,7 +3650,7 @@ speaker-n9cbf                             1/1     Running   0          7d4h   10
 ubuntu@vm1:~$ 
 ```
 
-###  9.2. <a name='Changeloglevel'></a>Change log level
+###  10.2. <a name='Changeloglevel'></a>Change log level
 
 You can change log verbosity in controller to debug:
 ```
@@ -3481,7 +3682,7 @@ kind: DaemonSet
         env:
 ```
 
-###  9.3. <a name='TraceVIPownership'></a>Trace VIP ownership
+###  10.3. <a name='TraceVIPownership'></a>Trace VIP ownership
 
 Check which worker is responsible for the VIP.
 
@@ -3494,7 +3695,7 @@ ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng | grep serviceAnnounc
 {"caller":"main.go:409","event":"serviceAnnounced","ips":["1.2.3.4"],"level":"info","msg":"service has IP, announcing","pool":"sctp-external-pool","protocol":"layer2","ts":"2025-02-01T18:04:08Z"}
 ```
 
-###  9.4. <a name='ARPresponderfunction'></a>ARP responder function
+###  10.4. <a name='ARPresponderfunction'></a>ARP responder function
 
 All speaker have ARP responder function activated. However, only the VIP master (cf previous section) will respond to ARP requests. 
 
@@ -3533,9 +3734,9 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 04:16:58.115241 52:54:00:b2:5b:52 > 52:54:00:41:4c:72, ethertype ARP (0x0806), length 60: Ethernet (len 6), IPv4 (len 4), Reply 10.123.123.100 is-at 52:54:00:b2:5b:52, length 46
 ```
 
-###  9.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
+###  10.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
 
-####  9.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
+####  10.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
 
 The intent of this test is to verify whether Metallb checks for pod readyness (READY state in pod) to advertise the VIP and respond to ARP request (L2 mode). 
 
@@ -3594,7 +3795,7 @@ ubuntu@vm-ext:~$ arp -na
 
 ```
 
-####  9.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
+####  10.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
 
 This is a slight variation of previous test to see how Metallb reacts on pod change.
 
