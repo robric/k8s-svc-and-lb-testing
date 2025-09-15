@@ -3623,6 +3623,13 @@ linkerd          linkerd-proxy-injector      ClusterIP      10.43.185.217   <non
 linkerd          linkerd-sp-validator        ClusterIP      10.43.149.191   <none>           443/TCP                      19s
 metallb-system   metallb-webhook-service     ClusterIP      10.43.163.86    <none>           443/TCP                      3d4h
 ubuntu@vm1:~$ 
+
+ubuntu@vm1:~$ kubectl get pods -A | grep link
+linkerd          linkerd-destination-56b9d96b97-fl8zc      4/4     Running     0          46m
+linkerd          linkerd-enterprise-c7d84ccb4-db8sh        2/2     Running     0          46m
+linkerd          linkerd-identity-875f6d59d-bnsr4          2/2     Running     0          46m
+linkerd          linkerd-proxy-injector-5f8ccd494f-9nvkg   2/2     Running     0          46m
+ubuntu@vm1:~$ 
 ```
 
 
