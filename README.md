@@ -3880,6 +3880,13 @@ Chain PROXY_INIT_OUTPUT (1 references)
     0     0 RETURN     tcp  --  any    any     anywhere             anywhere             multiport dports 4567,4568 /* proxy-init/ignore-port-4567,4568 */
    30  1800 REDIRECT   tcp  --  any    any     anywhere             anywhere             /* proxy-init/redirect-all-outgoing-to-proxy-port */ redir ports 4140
 
+LocalHost 127.0.0.1 port 4140 is indeed bound to linkerd (fd = 10)
+
+root@vm1:/home/ubuntu# ss -laptnu
+Netid                State                    Recv-Q                Send-Q                               Local Address:Port                                Peer Address:Port                Process                                                                                                                                                                                     
+tcp                  LISTEN                   0                     128                                      127.0.0.1:4140                                     0.0.0.0:*                    users:(("linkerd2-proxy",pid=290248,fd=10))   
+
+
 #2.2 The Linkerd proxy initiates new sessions to ALL app2 pods
 
  [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.3.14 sport=52280 dport=4143 src=10.42.3.14 dst=10.42.0.18 sport=4143 dport=52280 [ASSURED]
@@ -3891,18 +3898,25 @@ For the record here is some strace activity of the linkerd proxy
 ubuntu@vm1:~$ sudo strace -p 290248 -e trace=network
 
 [...]
+
+// This is the incoming curl packets received on fd 10  (see ss command above). This creates fd 16.
+
+accept4(10, {sa_family=AF_INET, sin_port=htons(47350), sin_addr=inet_addr("10.42.0.18")}, [128 => 16],
+
+// Then kernel sends the payload via fd 16 
+
 recvfrom(16, "GET / HTTP/1.1\r\nHost: app2:8080\r"..., 1024, 0, NULL, NULL) = 73
 getpeername(16, {sa_family=AF_INET, sin_port=htons(47350), sin_addr=inet_addr("10.42.0.18")}, [128 => 16]) = 0
 recvfrom(18, "\27\3\3\4fk2(\273tT\317q\351\364\244\265\230\227\t\305\210\250\6V\275+\361D\270\332\370"..., 4096, 0, NULL, NULL) = 1131
+
+// Next we see the sockets creation and attachment to port 4143 with all target pod addresses. 
+
 socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC|SOCK_NONBLOCK, IPPROTO_IP) = 19
 connect(19, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.3.14")}, 16) = -1 EINPROGRESS (Operation now in progress)
 socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC|SOCK_NONBLOCK, IPPROTO_IP) = 20
 connect(20, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.0.19")}, 16) = -1 EINPROGRESS (Operation now in progress)
 socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC|SOCK_NONBLOCK, IPPROTO_IP) = 21
 connect(21, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.1.14")}, 16) = -1 EINPROGRESS (Operation now in progress)
-
-We can see that packet is received from fd 16 with target port 8080.
-Next we see the sockets created to port 4143 with target pod addresses. 
 
 ```
 
