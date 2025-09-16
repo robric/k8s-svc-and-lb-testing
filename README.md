@@ -3891,7 +3891,7 @@ tcp                  LISTEN                   0                     128         
  [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.1.14 sport=43624 dport=4143 src=10.42.1.14 dst=10.42.0.18 sport=4143 dport=43624 [ASSURED]
 
 ```
-For the bookkeeping here is some strace activity of the linkerd proxy
+For bookkeeping, let's include the strace activity for the linkerd proxy.
 ```
 ubuntu@vm1:~$ sudo strace -p 290248 -e trace=network
 
