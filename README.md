@@ -3633,7 +3633,7 @@ linkerd          linkerd-identity-875f6d59d-bnsr4          2/2     Running     0
 linkerd          linkerd-proxy-injector-5f8ccd494f-9nvkg   2/2     Running     0          46m
 ubuntu@vm1:~$ 
 ```
-###  9.2. <a name='Linkerdproxinjectionforapp1andapp2'></a>Linkerd prox injection for app1 and app2
+###  9.2. <a name='Linkerdproxinjectionforapp1andapp2'></a>Linkerd proxy injection for app1 and app2
 
 After installation, we can start with proxy injection for app1 and app2.
 This is controlled by annotating the pods - i.e. deployment template - with: "linkerd.io/inject": "enabled"
@@ -3694,7 +3694,7 @@ The ports have the following functions:
 /// 
 ```
 
-###  9.3. <a name='Tests'></a>Tests
+###  9.3. <a name='Tests'></a>Tests and observations
 
 Trafic generation for E/W is generated from a pod in app1 (app1-7d54584bb9-cbhz2) to the app2 service via curl.
 
