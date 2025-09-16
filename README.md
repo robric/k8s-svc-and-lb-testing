@@ -1,4 +1,4 @@
-# Looking under the hood of kubernetes network abstractions: clusterIP, nodeport, metallb and EgressIP 
+# Looking under the hood of kubernetes networking: services, metallb, traefik/ingress, linkerd, EgressIP... 
 
 This repo focuses on the integration of services in kubernetes from basic clusterIP to loadbalancers. More precisely the following items are covered:
 -  basic k8s service custer and nodeport wiht inspection of iptables rules for comparison with more complex scenarios.
