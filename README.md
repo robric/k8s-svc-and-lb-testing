@@ -3631,6 +3631,32 @@ linkerd          linkerd-identity-875f6d59d-bnsr4          2/2     Running     0
 linkerd          linkerd-proxy-injector-5f8ccd494f-9nvkg   2/2     Running     0          46m
 ubuntu@vm1:~$ 
 ```
+### Linkerd deployment for app1 and app2
+
+After installation, we can start with proxy injection for app1 and app2.
+This is controlled by annotating the pods - i.e. deployment template - with: "linkerd.io/inject": "enabled"
+
+```
+kubectl patch deployment app1 \
+  -p '{"spec": {"template": {"metadata": {"annotations": {"linkerd.io/inject": "enabled"}}}}}'
+deployment.apps/app1 patched
+kubectl patch deployment app2   -p '{"spec": {"template": {"metadata": {"annotations": {"linkerd.io/inject": "enabled"}}}}}'
+deployment.apps/app2 patched
+```
+This kicks in the "linkerd-proxy-injector" and results in having 2/2 containers running in app1 and app2 (nginx and the linkerd proxy).
+
+```
+ubuntu@vm1:~$ kubectl get pods
+NAME                    READY   STATUS    RESTARTS   AGE
+app1-7d54584bb9-cbhz2   2/2     Running   0          25s
+app1-7d54584bb9-vw4jx   2/2     Running   0          14s
+app1-7d54584bb9-xbq7j   2/2     Running   0          10s
+app2-dd559b7bf-2htpv    2/2     Running   0          16s
+app2-dd559b7bf-mmh6x    2/2     Running   0          11s
+app2-dd559b7bf-tkwp4    2/2     Running   0          7s
+ubuntu@vm1:~$ 
+```
+
 
 
 
