@@ -3833,6 +3833,9 @@ tcpdump: listening on veth29d142c8, link-type EN10MB (Ethernet), snapshot length
 So now, let's investigate how the magic operates within the pod... because by default trafic would just take the default route via eth0 after leaving our nging container.
 
 ```
+
+#1 There is DNS request at first with service address for app2 so trafic can be sent to svc.
+
 DNS resolution to app2 svc (app2 ClusterIP   = 10.43.202.115)
 
 ubuntu@vm1:~$ sudo ip netns exec cni-3c8ab1bb-dd29-06bd-3242-83a12ce53680 bash
@@ -3841,26 +3844,64 @@ root@vm1:/home/ubuntu# tcpdump -vni eth0
     10.42.0.18.58179 > 10.43.0.10.53: 39505+ A? app2.default.svc.cluster.local. (48)
     10.43.0.10.53 > 10.42.0.18.58179: 39505*- 1/0/0 app2.default.svc.cluster.local. A 10.43.202.115 (94)
 
-#1 There is DNS request at first with service address for app2.
+#2 Trafic sent to SVC is redirected to local host port 4140 managed owned by linkerd
 
-+.
-...5.8...............app2.default.svc.cluster.local.....
-07:55:02.139823 IP (tos 0x0, ttl 64, id 25436, offset 0, flags [DF], proto UDP (17), length 76)
-    10.42.0.18.38789 > 10.43.0.10.53: 2680+ AAAA? app2.default.svc.cluster.local. (48)
-E..Lc\@.@...
-*..
-+.
-...5.8..
-x...........app2.default.svc.cluster.local.....
-07:55:02.140225 IP (tos 0x0, ttl 64, id 47338, offset 0, flags [DF], proto UDP (17), length 122)
-    10.43.0.10.53 > 10.42.0.18.38789: 2943*- 1/0/0 app2.default.svc.cluster.local. A 10.43.202.115 (94)
-E..z..@.@.m.
-+.
+# 2.1 The  initial curl request (10.42.0.18 ) to app2 svc (10.43.202.115) is redirected to local host port 4140.
 
-ubuntu@vm1:~$ sudo crictl ps | grep nginx
-07e2a072fa2c3       41f689c209100       5 hours ago         Running             nginx                    0                   0de6f02946ca9       app2-dd559b7bf-mmh6x
-e1a03adf86986       41f689c209100       6 hours ago         Running             nginx                    0                   69ee75eace936       app1-7d54584bb9-cbhz2
-ubuntu@vm1:~$ 
+Trace in the network namespace of app1 pod (pid 290248 is the linkerd proxy for the app1 pod used for tests).
+
+ubuntu@vm1:~$ sudo nsenter -t 290248 -n
+root@vm1:/home/ubuntu# conntrack -E
+
+ [NEW] tcp      6 120 SYN_SENT src=10.42.0.18 dst=10.43.202.115 sport=47350 dport=8080 [UNREPLIED] src=127.0.0.1 dst=10.42.0.18 sport=4140 dport=47350
+ 
+ [UPDATE] tcp      6 60 SYN_RECV src=10.42.0.18 dst=10.43.202.115 sport=47350 dport=8080 src=127.0.0.1 dst=10.42.0.18 sport=4140 dport=47350
+
+ [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.43.202.115 sport=47350 dport=8080 src=127.0.0.1 dst=10.42.0.18 sport=4140 dport=47350 [ASSURED]
+
+The rule is visible in iptables 
+
+root@vm1:/home/ubuntu# iptables-legacy -t nat -L -v
+
+[...] Jump to PROXY_INIT_OUTPUT 
+
+Chain OUTPUT (policy ACCEPT 8878 packets, 787K bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+ 8908  789K PROXY_INIT_OUTPUT  all  --  any    any     anywhere             anywhere             /* proxy-init/install-proxy-init-output */
+
+[...] Redirect every tcp trafic to port 4140 except UID 2102 + dports 4567 and 4568
+
+Chain PROXY_INIT_OUTPUT (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+ 8844  785K RETURN     all  --  any    any     anywhere             anywhere             owner UID match 2102 /* proxy-init/ignore-proxy-user-id */
+    4   240 RETURN     all  --  any    lo      anywhere             anywhere             /* proxy-init/ignore-loopback */
+    0     0 RETURN     tcp  --  any    any     anywhere             anywhere             multiport dports 4567,4568 /* proxy-init/ignore-port-4567,4568 */
+   30  1800 REDIRECT   tcp  --  any    any     anywhere             anywhere             /* proxy-init/redirect-all-outgoing-to-proxy-port */ redir ports 4140
+
+#2.2 The Linkerd proxy initiates new sessions to ALL app2 pods
+
+ [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.3.14 sport=52280 dport=4143 src=10.42.3.14 dst=10.42.0.18 sport=4143 dport=52280 [ASSURED]
+ [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.0.19 sport=45052 dport=4143 src=10.42.0.19 dst=10.42.0.18 sport=4143 dport=45052 [ASSURED]
+ [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.1.14 sport=43624 dport=4143 src=10.42.1.14 dst=10.42.0.18 sport=4143 dport=43624 [ASSURED]
+
+For the record here is some strace activity of the linkerd proxy
+
+ubuntu@vm1:~$ sudo strace -p 290248 -e trace=network
+
+[...]
+recvfrom(16, "GET / HTTP/1.1\r\nHost: app2:8080\r"..., 1024, 0, NULL, NULL) = 73
+getpeername(16, {sa_family=AF_INET, sin_port=htons(47350), sin_addr=inet_addr("10.42.0.18")}, [128 => 16]) = 0
+recvfrom(18, "\27\3\3\4fk2(\273tT\317q\351\364\244\265\230\227\t\305\210\250\6V\275+\361D\270\332\370"..., 4096, 0, NULL, NULL) = 1131
+socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC|SOCK_NONBLOCK, IPPROTO_IP) = 19
+connect(19, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.3.14")}, 16) = -1 EINPROGRESS (Operation now in progress)
+socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC|SOCK_NONBLOCK, IPPROTO_IP) = 20
+connect(20, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.0.19")}, 16) = -1 EINPROGRESS (Operation now in progress)
+socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC|SOCK_NONBLOCK, IPPROTO_IP) = 21
+connect(21, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.1.14")}, 16) = -1 EINPROGRESS (Operation now in progress)
+
+We can see that packet is received from fd 16 with target port 8080.
+Next we see the sockets created to port 4143 with target pod addresses. 
+
 ```
 
 
