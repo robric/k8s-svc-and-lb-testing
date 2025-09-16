@@ -3764,16 +3764,21 @@ linkerd          linkerd-destination-56b9d96b97-fl8zc      4/4     Running     0
 
 ///
 
-There is a TCP session established to the linkerd-destination-56b9d96b97-fl8zc pod on port 8090. This looks permanent.
+There is a TCP session established to the linkerd-destination-56b9d96b97-fl8zc pod on port 8086/8090. This looks permanent.
 
 ///
 
-06:17:18.419221 IP (tos 0x0, ttl 62, id 47889, offset 0, flags [DF], proto TCP (6), length 91)
-    10.42.3.7.8090 > 10.42.0.18.35304: Flags [P.], cksum 0x36da (correct), seq 326503336:326503375, ack 3915394092, win 527, options [nop,nop,TS val 2536212747 ecr 1807858373], length 39
-06:17:18.419366 IP (tos 0x0, ttl 64, id 62348, offset 0, flags [DF], proto TCP (6), length 91)
-    10.42.0.18.35304 > 10.42.3.7.8090: Flags [P.], cksum 0x17ba (incorrect -> 0xeab9), seq 1:40, ack 39, win 884, options [nop,nop,TS val 1807868373 ecr 2536212747], length 39
-06:17:18.419584 IP (tos 0x0, ttl 62, id 47890, offset 0, flags [DF], proto TCP (6), length 52)
-    10.42.3.7.8090 > 10.42.0.18.35304: Flags [.], cksum 0x10f8 (correct), ack 40, win 527, options [nop,nop,TS val 2536212747 ecr 1807868373], length 0
+ubuntu@vm1:~$ sudo tcpdump  -vni veth29d142c8 'tcp and not port 4191'
+tcpdump: listening on veth29d142c8, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+07:32:26.227722 IP (tos 0x0, ttl 62, id 8520, offset 0, flags [DF], proto TCP (6), length 91)
+    10.42.3.7.8086 > 10.42.0.18.35202: Flags [P.], cksum 0xdc4d (correct), seq 2448394407:2448394446, ack 597336651, win 501, options [nop,nop,TS val 2540664348 ecr 1812338180], length 39
+07:32:26.227823 IP (tos 0x0, ttl 64, id 52532, offset 0, flags [DF], proto TCP (6), length 91)
+    10.42.0.18.35202 > 10.42.3.7.8086: Flags [P.], cksum 0x17ba (incorrect -> 0x84c0), seq 1:40, ack 39, win 502, options [nop,nop,TS val 1812348182 ecr 2540664348], length 39
+07:32:26.227997 IP (tos 0x0, ttl 62, id 8521, offset 0, flags [DF], proto TCP (6), length 52)
+    10.42.3.7.8086 > 10.42.0.18.35202: Flags [.], cksum 0x1cd0 (correct), ack 40, win 501, options [nop,nop,TS val 2540664348 ecr 1812348182], length 0
+07:32:26.507623 IP (tos 0x0, ttl 62, id 48808, offset 0, flags [DF], proto TCP (6), length 91)
+    10.42.3.7.8090 > 10.42.0.18.35304: Flags [P.], cksum 0x01d0 (correct), seq 326528615:326528654, ack 3915415721, win 669, options [nop,nop,TS val 2540664628 ecr 1812338460], length 39
+07:32:26.507703 IP (tos 0x0, ttl 64, id 62824, offset 0, flags [DF], proto TCP (6), length 91)
 
 ///
 
@@ -3810,13 +3815,53 @@ Connection: close
 
 ```
 
-So now let's have a look at the data plane.
+So now let's have a look at the data plane. We can see trafic established on port 4143 (data plane port).
+The trafic is encrypted (although the curl request is in clear http). This simple native capability is a great driver for  the deployment linkerd (you may want a single control plane for the E/W encryption among services).
 
 ```
-
-
+ubuntu@vm1:~$ sudo tcpdump  -vni veth29d142c8 'tcp and not port 4191 and not port 8090 and not port 8086'
+tcpdump: listening on veth29d142c8, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+07:36:14.227680 IP (tos 0x0, ttl 64, id 20101, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.0.18.60224 > 10.42.0.19.4143: Flags [S], cksum 0x14a7 (incorrect -> 0x6b55), seq 2345613851, win 64860, options [mss 1410,sackOK,TS val 1857395447 ecr 0,nop,wscale 7], length 0
+07:36:14.227721 IP (tos 0x0, ttl 64, id 0, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.0.19.4143 > 10.42.0.18.60224: Flags [S.], cksum 0x14a7 (incorrect -> 0xab47), seq 3079886454, ack 2345613852, win 64308, options [mss 1410,sackOK,TS val 872644631 ecr 1857395447,nop,wscale 7], length 0
+07:36:14.227729 IP (tos 0x0, ttl 64, id 20102, offset 0, flags [DF], proto TCP (6), length 52)
+    10.42.0.18.60224 > 10.42.0.19.4143: Flags [.], cksum 0x149f (incorrect -> 0xd31b), ack 1, win 507, options [nop,nop,TS val 1857395447 ecr 872644631], length 0
+[...]
 ```
 
+So now, let's investigate how the magic operates within the pod... because by default trafic would just take the default route via eth0 after leaving our nging container.
+
+```
+DNS resolution to app2 svc (app2 ClusterIP   = 10.43.202.115)
+
+ubuntu@vm1:~$ sudo ip netns exec cni-3c8ab1bb-dd29-06bd-3242-83a12ce53680 bash
+root@vm1:/home/ubuntu# tcpdump -vni eth0
+
+    10.42.0.18.58179 > 10.43.0.10.53: 39505+ A? app2.default.svc.cluster.local. (48)
+    10.43.0.10.53 > 10.42.0.18.58179: 39505*- 1/0/0 app2.default.svc.cluster.local. A 10.43.202.115 (94)
+
+#1 There is DNS request at first with service address for app2.
+
++.
+...5.8...............app2.default.svc.cluster.local.....
+07:55:02.139823 IP (tos 0x0, ttl 64, id 25436, offset 0, flags [DF], proto UDP (17), length 76)
+    10.42.0.18.38789 > 10.43.0.10.53: 2680+ AAAA? app2.default.svc.cluster.local. (48)
+E..Lc\@.@...
+*..
++.
+...5.8..
+x...........app2.default.svc.cluster.local.....
+07:55:02.140225 IP (tos 0x0, ttl 64, id 47338, offset 0, flags [DF], proto UDP (17), length 122)
+    10.43.0.10.53 > 10.42.0.18.38789: 2943*- 1/0/0 app2.default.svc.cluster.local. A 10.43.202.115 (94)
+E..z..@.@.m.
++.
+
+ubuntu@vm1:~$ sudo crictl ps | grep nginx
+07e2a072fa2c3       41f689c209100       5 hours ago         Running             nginx                    0                   0de6f02946ca9       app2-dd559b7bf-mmh6x
+e1a03adf86986       41f689c209100       6 hours ago         Running             nginx                    0                   69ee75eace936       app1-7d54584bb9-cbhz2
+ubuntu@vm1:~$ 
+```
 
 
 
