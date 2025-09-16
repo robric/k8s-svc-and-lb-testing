@@ -3631,7 +3631,7 @@ linkerd          linkerd-identity-875f6d59d-bnsr4          2/2     Running     0
 linkerd          linkerd-proxy-injector-5f8ccd494f-9nvkg   2/2     Running     0          46m
 ubuntu@vm1:~$ 
 ```
-### Linkerd deployment for app1 and app2
+### Linkerd prox injection for app1 and app2
 
 After installation, we can start with proxy injection for app1 and app2.
 This is controlled by annotating the pods - i.e. deployment template - with: "linkerd.io/inject": "enabled"
@@ -3655,6 +3655,166 @@ app2-dd559b7bf-2htpv    2/2     Running   0          16s
 app2-dd559b7bf-mmh6x    2/2     Running   0          11s
 app2-dd559b7bf-tkwp4    2/2     Running   0          7s
 ubuntu@vm1:~$ 
+
+ubuntu@vm1:~$ kubectl describe pods app1-7d54584bb9-cbhz2 | grep -C1 "    Container ID: "
+  render-nginx-config:
+    Container ID:  containerd://6b78a97a2952cc838ad6018ca94f8c547c16dfe8c8b1e12bff77af00ce27346f
+    Image:         busybox:latest
+--
+  linkerd-init:
+    Container ID:    containerd://b7c023059a59f98d6ea0fab54be3473d1052287bad553f16da5f4ab607abceda
+    Image:           ghcr.io/buoyantio/proxy-init:enterprise-2.18.3
+--
+  linkerd-proxy:
+    Container ID:    containerd://bedf02d7093a6dda19215a6b1eb946cb04200d899084db6638df9fc5b7b1c315
+    Image:           ghcr.io/buoyantio/proxy:enterprise-2.18.3
+--
+  nginx:
+    Container ID:   containerd://e1a03adf869865188a294ab82d56eb43d5e64196d17679787c36b56f1d171bed
+    Image:          nginx:latest
+ubuntu@vm1:~$ 
+
+/// 
+  The proxy has two ports opened 4143 and 4191  
+/// 
+
+Containers:
+  linkerd-proxy:
+    Container ID:    containerd://bedf02d7093a6dda19215a6b1eb946cb04200d899084db6638df9fc5b7b1c315
+    Image:           ghcr.io/buoyantio/proxy:enterprise-2.18.3
+    Image ID:        ghcr.io/buoyantio/proxy@sha256:b6a90148f46f73f63f52fe55a3ebe0be410fecf12e041ea1d4fa34b8a72a3748
+    Ports:           4143/TCP, 4191/TCP
+
+The ports have the following functions:
+- Data Plane: 4143/TCP → Inbound traffic port. The proxy listens on this port to intercept incoming traffic to the pod (from other Linkerd-injected pods).
+- Control Plane: 4191/TCP → Admin + Prometheus metrics port 
+
+/// 
+```
+
+### Tests
+
+Trafic generation for E/W is generated from a pod in app1 (app1-7d54584bb9-cbhz2) to the app2 service via curl.
+
+```
+Diagram:
+
+-----------------------------              
+| pod app1-7d54584bb9-cbhz2 |              
+|                           |              
+| > curl app2               |              -----------------------------
+|                           |              |         pod app2-x        |
+|                           |              |                           |
+-----------| eth0 |----------              -----------| eth0 |----------
+               |                                          |                                        
+               |---------(kernel network ns)------->  [svc app2]
+
+
+Commands and Output:
+
+ubuntu@vm1:~$ kubectl get pods app1-7d54584bb9-cbhz2 -o wide 
+NAME                    READY   STATUS    RESTARTS   AGE   IP           NODE   NOMINATED NODE   READINESS GATES
+app1-7d54584bb9-cbhz2   2/2     Running   0          35m   10.42.0.18   vm1    <none>           <none>
+ubuntu@vm1:~$ kubectl exec -it app1-7d54584bb9-cbhz2 -c nginx -- curl app2
+Welcome to NGINX!
+Application:       app2
+Pod Name:          app2-dd559b7bf-mmh6x
+IP:                10.42.0.19
+RequestPort:       8080
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ kubectl exec -it app1-7d54584bb9-cbhz2 -c nginx -- curl app2
+Welcome to NGINX!
+Application:       app2
+Pod Name:          app2-dd559b7bf-2htpv
+IP:                10.42.1.14
+RequestPort:       8080
+ubuntu@vm1:~$ 
+```
+
+So now let's find the veth  and tcpdump on it to see what is happening. No trafic is generated for now, to inspect the control plane.
+
+```
+ubuntu@vm1:~$ kubectl get pods -A -o wide |grep app1 
+default          app1-7d54584bb9-cbhz2                     2/2     Running     0          80m     10.42.0.18     vm1    <none>           <none>
+[...]
+]ubuntu@vm1:~$ arp -na |grep 18
+? (10.42.0.18) at 4a:47:c5:63:14:09 [ether] on cni0
+ubuntu@vm1:~$ bridge fdb | grep  4a:47:c5:63:14:09
+4a:47:c5:63:14:09 dev veth29d142c8 master cni0 
+ubuntu@vm1:~$       
+
+ubuntu@vm1:~$ sudo tcpdump -vni veth29d142c8
+tcpdump: listening on veth29d142c8, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+
+///  The selected app1 pod reaches out the DNS service (10.43.0.10) to resolve "linkerd-dst-headless" and "linkerd-policy" services.
+    Both services are actually headless so the resolution directly points to the (same) pod IP address.
+    ubuntu@vm1:~$ kubectl get pods -A -o wide | grep 3.7
+linkerd          linkerd-destination-56b9d96b97-fl8zc      4/4     Running     0          21h     10.42.3.7      vm3    
+
+///
+
+06:17:17.489484 IP (tos 0x0, ttl 64, id 16938, offset 0, flags [DF], proto UDP (17), length 92)
+    10.42.0.18.47486 > 10.43.0.10.53: 8222+ SRV? linkerd-dst-headless.linkerd.svc.cluster.local. (64)
+06:17:17.489547 IP (tos 0x0, ttl 64, id 16939, offset 0, flags [DF], proto UDP (17), length 86)
+    10.42.0.18.21544 > 10.43.0.10.53: 42891+ SRV? linkerd-policy.linkerd.svc.cluster.local. (58)
+06:17:17.489810 IP (tos 0x0, ttl 64, id 47882, offset 0, flags [DF], proto UDP (17), length 262)
+    10.43.0.10.53 > 10.42.0.18.21544: 42891*- 1/0/1 linkerd-policy.linkerd.svc.cluster.local. SRV 10-42-3-7.linkerd-policy.linkerd.svc.cluster.local.:8090 0 100 (234)
+06:17:17.489873 IP (tos 0x0, ttl 64, id 47883, offset 0, flags [DF], proto UDP (17), length 286)
+    10.43.0.10.53 > 10.42.0.18.47486: 8222*- 1/0/1 linkerd-dst-headless.linkerd.svc.cluster.local. SRV 10-42-3-7.linkerd-dst-headless.linkerd.svc.cluster.local.:8086 0 100 (258)
+
+///
+
+There is a TCP session established to the linkerd-destination-56b9d96b97-fl8zc pod on port 8090. This looks permanent.
+
+///
+
+06:17:18.419221 IP (tos 0x0, ttl 62, id 47889, offset 0, flags [DF], proto TCP (6), length 91)
+    10.42.3.7.8090 > 10.42.0.18.35304: Flags [P.], cksum 0x36da (correct), seq 326503336:326503375, ack 3915394092, win 527, options [nop,nop,TS val 2536212747 ecr 1807858373], length 39
+06:17:18.419366 IP (tos 0x0, ttl 64, id 62348, offset 0, flags [DF], proto TCP (6), length 91)
+    10.42.0.18.35304 > 10.42.3.7.8090: Flags [P.], cksum 0x17ba (incorrect -> 0xeab9), seq 1:40, ack 39, win 884, options [nop,nop,TS val 1807868373 ecr 2536212747], length 39
+06:17:18.419584 IP (tos 0x0, ttl 62, id 47890, offset 0, flags [DF], proto TCP (6), length 52)
+    10.42.3.7.8090 > 10.42.0.18.35304: Flags [.], cksum 0x10f8 (correct), ack 40, win 527, options [nop,nop,TS val 2536212747 ecr 1807868373], length 0
+
+///
+
+Then kubelet is polling the pod 4191 via kube-proxy for liveness detection.
+
+ubuntu@vm1:~$ kubectl get pod app1-7d54584bb9-cbhz2 -o yaml | grep -A5 "livenessProbe"
+    livenessProbe:
+      failureThreshold: 3
+      httpGet:
+        path: /live
+        port: 4191
+        scheme: HTTP
+ubuntu@vm1:~$ 
+
+Payload inspection in tcpdump shows the probe.
+*..
+*....._LT@{...............
+.Ds.....GET /ready HTTP/1.1
+Host: 10.42.0.18:4191
+User-Agent: kube-probe/1.33
+Accept: */*
+Connection: close
+
+/// 
+06:17:20.206932 IP (tos 0x0, ttl 64, id 16531, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.0.1.44884 > 10.42.0.18.4191: Flags [S], cksum 0x1495 (incorrect -> 0x2e2f), seq 3515128348, win 64860, options [mss 1410,sackOK,TS val 117626344 ecr 0,nop,wscale 7], length 0
+06:17:20.206967 IP (tos 0x0, ttl 64, id 0, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.0.18.4191 > 10.42.0.1.44884: Flags [S.], cksum 0x1495 (incorrect -> 0xd2a1), seq 590629406, ack 3515128349, win 64308, options [mss 1410,sackOK,TS val 3195154911 ecr 117626344,nop,wscale 7], length 0
+06:17:20.206980 IP (tos 0x0, ttl 64, id 16532, offset 0, flags [DF], proto TCP (6), length 52)
+    10.42.0.1.44884 > 10.42.0.18.4191: Flags [.], cksum 0x148d (incorrect -> 0xfa75), ack 1, win 507, options [nop,nop,TS val 117626344 ecr 3195154911], length 0
+[...]
+06:17:20.289468 IP (tos 0x0, ttl 64, id 21061, offset 0, flags [DF], proto TCP (6), length 52)
+    10.42.0.18.4191 > 10.42.0.1.44886: Flags [F.], cksum 0x148d (incorrect -> 0xe93b), seq 127, ack 109, win 502, options [nop,nop,TS val 3195154993 ecr 117626426], length 0
+
+```
+
+So now let's have a look at the data plane.
+
+```
+
+
 ```
 
 
