@@ -3832,26 +3832,22 @@ tcpdump: listening on veth29d142c8, link-type EN10MB (Ethernet), snapshot length
 [...]
 ```
 
-So now, let's investigate how the magic operates within the pod... because by default trafic would just take the default route via eth0 after leaving our nging container.
+Now let's investigate how the magic operates within the pod... because by default trafic would just take the default route via eth0 after leaving our nginx container.
 
+
+* Step 1: DNS resolution to app2 svc (app2 ClusterIP   = 10.43.202.115) so trafic can be sent to app2.
+  
 ```
-
-#1 There is DNS request at first with service address for app2 so trafic can be sent to svc.
-
-DNS resolution to app2 svc (app2 ClusterIP   = 10.43.202.115)
-
 ubuntu@vm1:~$ sudo ip netns exec cni-3c8ab1bb-dd29-06bd-3242-83a12ce53680 bash
 root@vm1:/home/ubuntu# tcpdump -vni eth0
 
     10.42.0.18.58179 > 10.43.0.10.53: 39505+ A? app2.default.svc.cluster.local. (48)
     10.43.0.10.53 > 10.42.0.18.58179: 39505*- 1/0/0 app2.default.svc.cluster.local. A 10.43.202.115 (94)
+```
 
-#2 Trafic sent to SVC is redirected to local host port 4140 managed owned by linkerd
+* Step 2.1: The curl request (10.42.0.18 ) to app2 svc (10.43.202.115) is redirected to local host port 4140.  Trace in the network namespace of app1 pod (pid 290248 is the linkerd proxy for the app1 pod used for tests).
 
-# 2.1 The  initial curl request (10.42.0.18 ) to app2 svc (10.43.202.115) is redirected to local host port 4140.
-
-Trace in the network namespace of app1 pod (pid 290248 is the linkerd proxy for the app1 pod used for tests).
-
+```
 ubuntu@vm1:~$ sudo nsenter -t 290248 -n
 root@vm1:/home/ubuntu# conntrack -E
 
@@ -3860,9 +3856,9 @@ root@vm1:/home/ubuntu# conntrack -E
  [UPDATE] tcp      6 60 SYN_RECV src=10.42.0.18 dst=10.43.202.115 sport=47350 dport=8080 src=127.0.0.1 dst=10.42.0.18 sport=4140 dport=47350
 
  [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.43.202.115 sport=47350 dport=8080 src=127.0.0.1 dst=10.42.0.18 sport=4140 dport=47350 [ASSURED]
-
-The rule is visible in iptables 
-
+```
+The rule is visible in iptables.
+```
 root@vm1:/home/ubuntu# iptables-legacy -t nat -L -v
 
 [...] Jump to PROXY_INIT_OUTPUT 
@@ -3879,22 +3875,24 @@ Chain PROXY_INIT_OUTPUT (1 references)
     4   240 RETURN     all  --  any    lo      anywhere             anywhere             /* proxy-init/ignore-loopback */
     0     0 RETURN     tcp  --  any    any     anywhere             anywhere             multiport dports 4567,4568 /* proxy-init/ignore-port-4567,4568 */
    30  1800 REDIRECT   tcp  --  any    any     anywhere             anywhere             /* proxy-init/redirect-all-outgoing-to-proxy-port */ redir ports 4140
-
+```
 LocalHost 127.0.0.1 port 4140 is indeed bound to linkerd (fd = 10)
+```
 
 root@vm1:/home/ubuntu# ss -laptnu
 Netid                State                    Recv-Q                Send-Q                               Local Address:Port                                Peer Address:Port                Process                                                                                                                                                                                     
 tcp                  LISTEN                   0                     128                                      127.0.0.1:4140                                     0.0.0.0:*                    users:(("linkerd2-proxy",pid=290248,fd=10))   
+```
+* Step 2.2:  The Linkerd proxy initiates new sessions to ALL app2 pods
 
-
-#2.2 The Linkerd proxy initiates new sessions to ALL app2 pods
-
+```
  [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.3.14 sport=52280 dport=4143 src=10.42.3.14 dst=10.42.0.18 sport=4143 dport=52280 [ASSURED]
  [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.0.19 sport=45052 dport=4143 src=10.42.0.19 dst=10.42.0.18 sport=4143 dport=45052 [ASSURED]
  [UPDATE] tcp      6 432000 ESTABLISHED src=10.42.0.18 dst=10.42.1.14 sport=43624 dport=4143 src=10.42.1.14 dst=10.42.0.18 sport=4143 dport=43624 [ASSURED]
 
-For the record here is some strace activity of the linkerd proxy
-
+```
+For the bookkeeping here is some strace activity of the linkerd proxy
+```
 ubuntu@vm1:~$ sudo strace -p 290248 -e trace=network
 
 [...]
