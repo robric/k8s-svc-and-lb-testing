@@ -38,6 +38,12 @@ This page is also:
 		* 5.3.7. [Non fate-sharing deployment with metallb and  multiple VIPs](#Nonfate-sharingdeploymentwithmetallbandmultipleVIPs)
 		* 5.3.8. [Metallb compliance with SCTP](#MetallbcompliancewithSCTP)
 		* 5.3.9. [Metallb with IPSEC (strongswan) and SCTP](#MetallbwithIPSECstrongswanandSCTP)
+	* 5.4. [Metallb Troubleshooting tips](#MetallbTroubleshootingtips)
+		* 5.4.1. [Presentation](#Presentation)
+		* 5.4.2. [Change log level](#Changeloglevel)
+		* 5.4.3. [Trace VIP ownership](#TraceVIPownership)
+		* 5.4.4. [ARP responder function](#ARPresponderfunction)
+		* 5.4.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
 * 6. [Openshift Integration](#OpenshiftIntegration)
 	* 6.1. [Background](#Background)
 	* 6.2. [Setup Description](#SetupDescription)
@@ -66,14 +72,6 @@ This page is also:
 * 10. [Canary deployments](#Canarydeployments)
 	* 10.1. [Background](#Background-1)
 	* 10.2. [Deployment and tests](#Deploymentandtests)
-* 11. [Metallb Troubleshooting tips](#MetallbTroubleshootingtips)
-	* 11.1. [Presentation](#Presentation)
-	* 11.2. [Change log level](#Changeloglevel)
-	* 11.3. [Trace VIP ownership](#TraceVIPownership)
-	* 11.4. [ARP responder function](#ARPresponderfunction)
-	* 11.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
-		* 11.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
-		* 11.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -2428,6 +2426,182 @@ ubuntu@vm1:~$ sudo conntrack -E -e NEW -p sctp
     [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=44875 dport=10000 [UNREPLIED] src=10.42.2.65 dst=10.42.0.0 sport=9999 dport=6425
     [NEW] sctp     132 10 CLOSED src=10.42.0.81 dst=1.2.3.4 sport=52146 dport=10000 [UNREPLIED] src=10.42.1.67 dst=10.42.0.0 sport=9999 dport=3980
 ```
+###  5.4. <a name='MetallbTroubleshootingtips'></a>Metallb Troubleshooting tips
+
+####  5.4.1. <a name='Presentation'></a>Presentation
+
+There is a set of pods  main pods for metallb:
+ - controller (deployment): centralized control plane for metallb
+ - speaker (daemonset): a pod runs on each node. It is notably responsible for responding to ARP in L2 when elected as Master for a VIP. 
+ - frr: optional when you want to use frr (BGP). 
+```
+ubuntu@vm1:~$ kubectl get pods -o wide -n metallb-system 
+NAME                                      READY   STATUS    RESTARTS   AGE    IP             NODE   NOMINATED NODE   READINESS GATES
+frr-k8s-webhook-server-7d94b7b8d5-8pgd7   1/1     Running   0          7d4h   10.42.1.7      vm2    <none>           <none>
+frr-k8s-daemon-t68fr                      6/6     Running   0          7d4h   10.65.94.199   vm2    <none>           <none>
+controller-5f4fc66d9d-4j4h5               1/1     Running   0          7d4h   10.42.1.8      vm2    <none>           <none>
+frr-k8s-daemon-q695g                      6/6     Running   0          7d4h   10.65.94.238   vm1    <none>           <none>
+speaker-gq27n                             1/1     Running   0          7d4h   10.65.94.238   vm1    <none>           <none>
+speaker-lklxw                             1/1     Running   0          7d4h   10.65.94.199   vm2    <none>           <none>
+frr-k8s-daemon-h7rh6                      6/6     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
+speaker-n9cbf                             1/1     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
+ubuntu@vm1:~$ 
+```
+
+####  5.4.2. <a name='Changeloglevel'></a>Change log level
+
+You can change log verbosity in controller to debug:
+```
+# Edit the deployment for controller and set args log to debug:
+
+ubuntu@vm1:~$ kubectl edit deployments.apps -n metallb-system controller 
+
+kind: Deployment
+metadata:
+[...]
+    spec:
+      containers:
+      - args:
+        - --port=7472
+        - --log-level=debug
+
+# Edit the daemonset for speakers and set args log to debug:
+
+ubuntu@vm1:~$ kubectl  edit daemonsets.apps -n metallb-system speaker 
+
+apiVersion: apps/v1
+kind: DaemonSet
+[...]
+    spec:
+      containers:
+      - args:
+        - --port=7472
+        - --log-level=debug
+        env:
+```
+
+####  5.4.3. <a name='TraceVIPownership'></a>Trace VIP ownership
+
+Check which worker is responsible for the VIP.
+
+You can check the log (info good enough) of speakers. The server that is responsible for a VIP has a a specific "serviceAnnounced" event.  
+
+```console
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-89b29 | grep serviceAnnounced
+{"caller":"main.go:409","event":"serviceAnnounced","ips":["10.123.123.100"],"level":"info","msg":"service has IP, announcing","pool":"external-pool","protocol":"layer2","ts":"2025-02-05T10:14:46Z"}```
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng | grep serviceAnnounced
+{"caller":"main.go:409","event":"serviceAnnounced","ips":["1.2.3.4"],"level":"info","msg":"service has IP, announcing","pool":"sctp-external-pool","protocol":"layer2","ts":"2025-02-01T18:04:08Z"}
+```
+
+####  5.4.4. <a name='ARPresponderfunction'></a>ARP responder function
+
+All speaker have ARP responder function activated. However, only the VIP master (cf previous section) will respond to ARP requests. 
+
+```
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-89b29 |grep ARP
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:05Z"}
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:05Z"}
+
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng  |grep ARP
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:07Z"}
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:07Z"}
+
+ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-96jn5 |grep ARP
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:01Z"}
+{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:01Z"}
+```
+
+With severity log "debug", we can trace every ARP request and have information on its content.
+Below is a capture on a speaker that owns the VIP in case of ARP request to the VIP. Here 10.123.123.4 is the requester.
+
+```
+ubuntu@vm1:~$ kubectl  logs -n metallb-system speaker-4xqf5  -f 
+{"caller":"net.go:962","component":"Memberlist","level":"debug","msg":"memberlist: Initiating push/pull sync with: vm3 10.65.94.59:7946","ts":"2025-02-05T12:10:00Z"}
+{"caller":"arp.go:110","interface":"ens3","ip":"10.123.123.100","level":"debug","msg":"got ARP request for service IP, sending response","responseMAC":"52:54:00:b2:5b:52","senderIP":"10.123.123.4","senderMAC":"52:54:00:41:4c:72","ts":"2025-02-05T12:10:03Z"}
+{"caller":"arp.go:110","interface":"ens3.100","ip":"10.123.123.100","level":"debug","msg":"got ARP request for service IP, sending response","responseMAC":"52:54:00:b2:5b:52","senderIP":"10.123.123.4","senderMAC":"52:54:00:41:4c:72","ts":"2025-02-05T12:10:03Z"}
+[...]
+```
+
+This trace mapsto the TCPDUMP capture for ARP on the master (vm2 here with MAC 52:54:00:41:4c:72):
+
+```
+ubuntu@vm2:~$ sudo tcpdump -evni ens3.100 "arp"
+tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+
+04:16:58.115088 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.100 tell 10.123.123.4, length 28
+04:16:58.115241 52:54:00:b2:5b:52 > 52:54:00:41:4c:72, ethertype ARP (0x0806), length 60: Ethernet (len 6), IPv4 (len 4), Reply 10.123.123.100 is-at 52:54:00:b2:5b:52, length 46
+```
+
+####  5.4.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
+
+##### POD RUNNING but has no READY container
+
+The intent of this test is to verify whether Metallb checks for pod readyness (READY state in pod) to advertise the VIP and respond to ARP request (L2 mode). 
+
+The following manifest creates a pod that fails with service IP 10.123.123.99.
+
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/test-NOT-READY-pod.yaml
+```
+
+Quick output check: we have our pod with status running but the service is not READY (some container is not READY).
+```
+ubuntu@vm1:~$ kubectl get pods
+NAME                          READY   STATUS    RESTARTS   AGE
+never-ready                   0/1     Running   0          5m
+ubuntu@vm1:~$ kubectl  get svc
+NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE
+kubernetes             ClusterIP      10.43.0.1      <none>           443/TCP        3h38m
+never-ready-svc        LoadBalancer   10.43.186.5    10.123.123.99    80:30258/TCP   5m2s
+[...]
+ubuntu@vm1:~$ 
+``` 
+
+Meanwhile, debugs on speaker are captured [here](../logs/debug-speaker-not-ready.log). We can see a notable difference in the traces, where we see
+
+```
+{"caller":"bgp_controller.go:152","event":"skipping should announce bgp","ips":["10.123.123.99"],"level":"debug","pool":"external-pool","protocol":"bgp","reason":"pool not matching my node","service":"default/never-ready-svc","ts":"2025-02-05T14:28:07Z"}
+{"caller":"layer2_controller.go:87","event":"shouldannounce","ips":["10.123.123.99"],"level":"debug","message":"failed no active endpoints","pool":"external-pool","protocol":"l2","service":"default/never-ready-svc","ts":"2025-02-05T14:28:07Z"}
+```
+
+When trying to reach the service from the external VM, ARP is not resolved, which is confirmed with TCPDUMP.
+
+```
+# generate trafic to VIP (even though there is no ping reply excepted for VIP ... but that's ok since we're just testing ARP )
+
+ubuntu@vm-ext:~$ ping 10.123.123.99
+PING 10.123.123.99 (10.123.123.99) 56(84) bytes of data.
+^C
+--- 10.123.123.99 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2049ms
+ubuntu@vm-ext:~$ 
+
+#  ARP request have no reply 
+
+ubuntu@vm2:~$ sudo tcpdump -evni ens3.100 "arp"
+tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+06:47:53.728156 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
+06:47:54.753046 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
+06:47:55.777028 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
+06:47:59.240016 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.100 tell 10.123.123.4, length 28
+
+#ARP is incomplete
+
+ubuntu@vm-ext:~$ arp -na
+? (10.42.0.23) at fa:41:32:7f:51:52 [ether] on cni0
+? (10.123.123.99) at <incomplete> on ens3.100
+
+```
+
+#####  POD RUNNING but container transitions from READY to NOT READY 
+
+This is a slight variation of previous test to see how Metallb reacts on pod change.
+
+Use the following manifest for bringing up the test scenario.
+
+```
+https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/test-READY-to-NOT-READY-pod.yaml
+```
 
 ##  6. <a name='OpenshiftIntegration'></a>Openshift Integration
 
@@ -4078,7 +4252,6 @@ kind: MutatingWebhookConfiguration
       values:
       - kube-system                             <--------------------- This can't work...
       - cert-manager
-
 ```
 Let's patch it
 ```
@@ -4107,6 +4280,8 @@ And now trafic from traefik to backend pod is encrypted !
     10.42.1.28.4191 > 10.42.1.1.38250: Flags [S.], cksum 0x169f (incorrect -> 0x646e), seq 1781678264, ack 3680505648, win 64308, options [mss 1410,sackOK,TS val 3145401681 ecr 2546875950,nop,wscale 7], length 0
 ```
 
+
+
 ##  10. <a name='Canarydeployments'></a>Canary deployments
 
 ###  10.1. <a name='Background-1'></a>Background 
@@ -4122,182 +4297,7 @@ ubuntu@vm1:~$ for i in {1..100}; do   curl -s http://10.123.123.200/app2 | grep 
      20      60     960
 ```
 
-##  11. <a name='MetallbTroubleshootingtips'></a>Metallb Troubleshooting tips
 
-###  11.1. <a name='Presentation'></a>Presentation
-
-There is a set of pods  main pods for metallb:
- - controller (deployment): centralized control plane for metallb
- - speaker (daemonset): a pod runs on each node. It is notably responsible for responding to ARP in L2 when elected as Master for a VIP. 
- - frr: optional when you want to use frr (BGP). 
-```
-ubuntu@vm1:~$ kubectl get pods -o wide -n metallb-system 
-NAME                                      READY   STATUS    RESTARTS   AGE    IP             NODE   NOMINATED NODE   READINESS GATES
-frr-k8s-webhook-server-7d94b7b8d5-8pgd7   1/1     Running   0          7d4h   10.42.1.7      vm2    <none>           <none>
-frr-k8s-daemon-t68fr                      6/6     Running   0          7d4h   10.65.94.199   vm2    <none>           <none>
-controller-5f4fc66d9d-4j4h5               1/1     Running   0          7d4h   10.42.1.8      vm2    <none>           <none>
-frr-k8s-daemon-q695g                      6/6     Running   0          7d4h   10.65.94.238   vm1    <none>           <none>
-speaker-gq27n                             1/1     Running   0          7d4h   10.65.94.238   vm1    <none>           <none>
-speaker-lklxw                             1/1     Running   0          7d4h   10.65.94.199   vm2    <none>           <none>
-frr-k8s-daemon-h7rh6                      6/6     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
-speaker-n9cbf                             1/1     Running   0          7d4h   10.65.94.95    vm3    <none>           <none>
-ubuntu@vm1:~$ 
-```
-
-###  11.2. <a name='Changeloglevel'></a>Change log level
-
-You can change log verbosity in controller to debug:
-```
-# Edit the deployment for controller and set args log to debug:
-
-ubuntu@vm1:~$ kubectl edit deployments.apps -n metallb-system controller 
-
-kind: Deployment
-metadata:
-[...]
-    spec:
-      containers:
-      - args:
-        - --port=7472
-        - --log-level=debug
-
-# Edit the daemonset for speakers and set args log to debug:
-
-ubuntu@vm1:~$ kubectl  edit daemonsets.apps -n metallb-system speaker 
-
-apiVersion: apps/v1
-kind: DaemonSet
-[...]
-    spec:
-      containers:
-      - args:
-        - --port=7472
-        - --log-level=debug
-        env:
-```
-
-###  11.3. <a name='TraceVIPownership'></a>Trace VIP ownership
-
-Check which worker is responsible for the VIP.
-
-You can check the log (info good enough) of speakers. The server that is responsible for a VIP has a a specific "serviceAnnounced" event.  
-
-```console
-ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-89b29 | grep serviceAnnounced
-{"caller":"main.go:409","event":"serviceAnnounced","ips":["10.123.123.100"],"level":"info","msg":"service has IP, announcing","pool":"external-pool","protocol":"layer2","ts":"2025-02-05T10:14:46Z"}```
-ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng | grep serviceAnnounced
-{"caller":"main.go:409","event":"serviceAnnounced","ips":["1.2.3.4"],"level":"info","msg":"service has IP, announcing","pool":"sctp-external-pool","protocol":"layer2","ts":"2025-02-01T18:04:08Z"}
-```
-
-###  11.4. <a name='ARPresponderfunction'></a>ARP responder function
-
-All speaker have ARP responder function activated. However, only the VIP master (cf previous section) will respond to ARP requests. 
-
-```
-ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-89b29 |grep ARP
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:05Z"}
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:05Z"}
-
-ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng  |grep ARP
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:07Z"}
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:07Z"}
-
-ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-96jn5 |grep ARP
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:01Z"}
-{"caller":"announcer.go:126","event":"createARPResponder","interface":"ens3.100","level":"info","msg":"created ARP responder for interface","ts":"2025-02-01T18:04:01Z"}
-```
-
-With severity log "debug", we can trace every ARP request and have information on its content.
-Below is a capture on a speaker that owns the VIP in case of ARP request to the VIP. Here 10.123.123.4 is the requester.
-
-```
-ubuntu@vm1:~$ kubectl  logs -n metallb-system speaker-4xqf5  -f 
-{"caller":"net.go:962","component":"Memberlist","level":"debug","msg":"memberlist: Initiating push/pull sync with: vm3 10.65.94.59:7946","ts":"2025-02-05T12:10:00Z"}
-{"caller":"arp.go:110","interface":"ens3","ip":"10.123.123.100","level":"debug","msg":"got ARP request for service IP, sending response","responseMAC":"52:54:00:b2:5b:52","senderIP":"10.123.123.4","senderMAC":"52:54:00:41:4c:72","ts":"2025-02-05T12:10:03Z"}
-{"caller":"arp.go:110","interface":"ens3.100","ip":"10.123.123.100","level":"debug","msg":"got ARP request for service IP, sending response","responseMAC":"52:54:00:b2:5b:52","senderIP":"10.123.123.4","senderMAC":"52:54:00:41:4c:72","ts":"2025-02-05T12:10:03Z"}
-[...]
-```
-
-This trace mapsto the TCPDUMP capture for ARP on the master (vm2 here with MAC 52:54:00:41:4c:72):
-
-```
-ubuntu@vm2:~$ sudo tcpdump -evni ens3.100 "arp"
-tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
-
-04:16:58.115088 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.100 tell 10.123.123.4, length 28
-04:16:58.115241 52:54:00:b2:5b:52 > 52:54:00:41:4c:72, ethertype ARP (0x0806), length 60: Ethernet (len 6), IPv4 (len 4), Reply 10.123.123.100 is-at 52:54:00:b2:5b:52, length 46
-```
-
-###  11.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
-
-####  11.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
-
-The intent of this test is to verify whether Metallb checks for pod readyness (READY state in pod) to advertise the VIP and respond to ARP request (L2 mode). 
-
-The following manifest creates a pod that fails with service IP 10.123.123.99.
-
-```
-kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/test-NOT-READY-pod.yaml
-```
-
-Quick output check: we have our pod with status running but the service is not READY (some container is not READY).
-```
-ubuntu@vm1:~$ kubectl get pods
-NAME                          READY   STATUS    RESTARTS   AGE
-never-ready                   0/1     Running   0          5m
-ubuntu@vm1:~$ kubectl  get svc
-NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE
-kubernetes             ClusterIP      10.43.0.1      <none>           443/TCP        3h38m
-never-ready-svc        LoadBalancer   10.43.186.5    10.123.123.99    80:30258/TCP   5m2s
-[...]
-ubuntu@vm1:~$ 
-``` 
-
-Meanwhile, debugs on speaker are captured [here](../logs/debug-speaker-not-ready.log). We can see a notable difference in the traces, where we see
-
-```
-{"caller":"bgp_controller.go:152","event":"skipping should announce bgp","ips":["10.123.123.99"],"level":"debug","pool":"external-pool","protocol":"bgp","reason":"pool not matching my node","service":"default/never-ready-svc","ts":"2025-02-05T14:28:07Z"}
-{"caller":"layer2_controller.go:87","event":"shouldannounce","ips":["10.123.123.99"],"level":"debug","message":"failed no active endpoints","pool":"external-pool","protocol":"l2","service":"default/never-ready-svc","ts":"2025-02-05T14:28:07Z"}
-```
-
-When trying to reach the service from the external VM, ARP is not resolved, which is confirmed with TCPDUMP.
-
-```
-# generate trafic to VIP (even though there is no ping reply excepted for VIP ... but that's ok since we're just testing ARP )
-
-ubuntu@vm-ext:~$ ping 10.123.123.99
-PING 10.123.123.99 (10.123.123.99) 56(84) bytes of data.
-^C
---- 10.123.123.99 ping statistics ---
-3 packets transmitted, 0 received, 100% packet loss, time 2049ms
-ubuntu@vm-ext:~$ 
-
-#  ARP request have no reply 
-
-ubuntu@vm2:~$ sudo tcpdump -evni ens3.100 "arp"
-tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262144 bytes
-06:47:53.728156 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
-06:47:54.753046 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
-06:47:55.777028 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.99 tell 10.123.123.4, length 28
-06:47:59.240016 52:54:00:41:4c:72 > ff:ff:ff:ff:ff:ff, ethertype ARP (0x0806), length 42: Ethernet (len 6), IPv4 (len 4), Request who-has 10.123.123.100 tell 10.123.123.4, length 28
-
-#ARP is incomplete
-
-ubuntu@vm-ext:~$ arp -na
-? (10.42.0.23) at fa:41:32:7f:51:52 [ether] on cni0
-? (10.123.123.99) at <incomplete> on ens3.100
-
-```
-
-####  11.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
-
-This is a slight variation of previous test to see how Metallb reacts on pod change.
-
-Use the following manifest for bringing up the test scenario.
-
-```
-https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/test-READY-to-NOT-READY-pod.yaml
-```
 
 
 
