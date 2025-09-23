@@ -4061,7 +4061,7 @@ NAMESPACE        NAME                                      READY   STATUS      R
 [..]
 kube-system      traefik-5f5bbc6f78-gmwn5                  1/1     Running     0          19s
 ```
-It looks like we have some RBAC in the way.
+After some investigations, we have restrictions for linkerd injection.
 ```
 ubuntu@vm1:~$ kubectl get mutatingwebhookconfigurations linkerd-proxy-injector-webhook-config  -o yaml
 apiVersion: admissionregistration.k8s.io/v1
@@ -4098,13 +4098,13 @@ ubuntu@vm1:~$ kubectl get pods -A
 kube-system      traefik-79d97bf45-4rn67                   2/2     Running     0          40s
 ```
 
-And now trafic from traefik is encrypted.
+And now trafic from traefik to backend pod is encrypted !
 
 ```
-05:48:17.493054 IP (tos 0x0, ttl 62, id 27081, offset 0, flags [DF], proto TCP (6), length 60)
-    10.42.0.40.57492 > 10.42.1.28.4143: Flags [S], cksum 0xe774 (correct), seq 4080505652, win 64860, options [mss 1410,sackOK,TS val 3157400166 ecr 0,nop,wscale 7], length 0
-05:48:17.493094 IP (tos 0x0, ttl 64, id 0, offset 0, flags [DF], proto TCP (6), length 60)
-    10.42.1.28.4143 > 10.42.0.40.57492: Flags [S.], cksum 0x15c6 (incorrect -> 0x0061), seq 3470548483, ack 4080505653, win 64308, options [mss 1410,sackOK,TS val 2349871162 ecr 3157400166,nop,wscale 7], length 0
+05:48:21.649958 IP (tos 0x0, ttl 64, id 41064, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.1.1.38250 > 10.42.1.28.4191: Flags [S], cksum 0x169f (incorrect -> 0xce0e), seq 3680505647, win 64860, options [mss 1410,sackOK,TS val 2546875950 ecr 0,nop,wscale 7], length 0
+05:48:21.649996 IP (tos 0x0, ttl 64, id 0, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.1.28.4191 > 10.42.1.1.38250: Flags [S.], cksum 0x169f (incorrect -> 0x646e), seq 1781678264, ack 3680505648, win 64308, options [mss 1410,sackOK,TS val 3145401681 ecr 2546875950,nop,wscale 7], length 0
 ```
 
 ##  10. <a name='Canarydeployments'></a>Canary deployments
