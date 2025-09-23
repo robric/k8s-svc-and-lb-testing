@@ -3635,8 +3635,14 @@ ubuntu@vm1:~$
 ```
 ###  9.2. <a name='Linkerdproxinjectionforapp1andapp2'></a>Linkerd proxy injection for app1 and app2
 
-After installation, we can start with proxy injection for app1 and app2.
-This is controlled by annotating the pods - i.e. deployment template - with: "linkerd.io/inject": "enabled"
+This kubernetes deployment is based on the traefic testing in [traefik section](#Deployment).
+The base deployment with traefik and linkerd can be rolled-out via the following manifest. It has the topology with [IngressRoute](#IngressRoutetraefik) and linkerd for app1 and app2.
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/nginx-traefik_linkerd.yaml
+```
+----
+
+After installation of linkerd, we can control the linkerd proxy injection for app1 and app2 by annotating the podswith: "linkerd.io/inject": "enabled". For this purpose, the template for app1 and app2 are updated.
 
 ```
 kubectl patch deployment app1 \
@@ -3918,8 +3924,23 @@ connect(21, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.
 
 ```
 
+### Linkerd and Traefik (Ingress) integration 
 
+The deployment for this test is 
+## Canary deployments
 
+### Background 
+
+This setup complements sections [linkerd](#linkerd) and [traefik](#traefik). 
+
+### Deployment and tests
+
+* For traefik, we can quickly check that over 100 connections, 20 were reaching the canary deployment.
+
+```
+ubuntu@vm1:~$ for i in {1..100}; do   curl -s http://10.123.123.200/app2 | grep canary;  done | wc
+     20      60     960
+```
 
 ##  10. <a name='MetallbTroubleshootingtips'></a>Metallb Troubleshooting tips
 

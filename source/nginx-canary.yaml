@@ -1,0 +1,324 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: app1
+  namespace: default
+spec:
+  selector:
+    app: app1
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: app1
+  template:
+    metadata:
+      labels:
+        app: app1
+      annotations:
+        linkerd.io/inject: "enabled"
+    spec:
+      containers:
+      - image: nginx:latest
+        name: nginx
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: nginx-config
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          export POD_NAME
+          export POD_IP
+          export APP_NAME
+          cat <<EOF > /nginx/nginx.conf
+          server {
+              listen 8080;
+              server_name localhost;
+              location / {
+                  default_type text/plain;
+                  return 200 "Welcome to NGINX!\nApplication:       $APP_NAME\nPod Name:          $POD_NAME\nIP:                $POD_IP\nRequestPort:       \$server_port\n";
+              }
+          }
+          EOF
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: APP_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
+        image: busybox:latest
+        name: render-nginx-config
+        volumeMounts:
+        - mountPath: /nginx
+          name: nginx-config
+      restartPolicy: Always
+      volumes:
+      - emptyDir: {}
+        name: nginx-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app2
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: app2
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: app2
+        track: stable
+      annotations:
+        linkerd.io/inject: "enabled"
+    spec:
+      containers:
+      - image: nginx:latest
+        name: nginx
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: nginx-config
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          export POD_NAME
+          export POD_IP
+          export APP_NAME
+          cat <<EOF > /nginx/nginx.conf
+          server {
+              listen 8080;
+              server_name localhost;
+              location / {
+                  default_type text/plain;
+                  return 200 "Welcome to NGINX!\nApplication:       $APP_NAME\nPod Name:          $POD_NAME\nIP:                $POD_IP\nRequestPort:       \$server_port\n";
+              }
+          }
+          EOF
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: APP_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
+        image: busybox:latest
+        name: render-nginx-config
+        volumeMounts:
+        - mountPath: /nginx
+          name: nginx-config
+      restartPolicy: Always
+      volumes:
+      - emptyDir: {}
+        name: nginx-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app2-canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app2
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: app2
+        track: canary
+      annotations:
+        linkerd.io/inject: "enabled"
+    spec:
+      containers:
+      - image: nginx:latest
+        name: nginx
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: nginx-config
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          export POD_NAME
+          export POD_IP
+          export APP_NAME
+          cat <<EOF > /nginx/nginx.conf
+          server {
+              listen 8080;
+              server_name localhost;
+              location / {
+                  default_type text/plain;
+                  return 200 "Welcome to NGINX!\nApplication:       $APP_NAME\nPod Name:          $POD_NAME\nIP:                $POD_IP\nRequestPort:       \$server_port\n";
+              }
+          }
+          EOF
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: APP_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
+        image: busybox:latest
+        name: render-nginx-config
+        volumeMounts:
+        - mountPath: /nginx
+          name: nginx-config
+      restartPolicy: Always
+      volumes:
+      - emptyDir: {}
+        name: nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app2-stable-svc
+  namespace: default
+spec:
+  selector:
+    app: app2
+    track: stable
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app2-canary-svc
+  namespace: default
+spec:
+  selector:
+    app: app2
+    track: canary
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+# Root service for Linkerd TrafficSplit
+apiVersion: v1
+kind: Service
+metadata:
+  name: app2
+  namespace: default
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector: {}
+---
+# -------------------------------
+# IngressRoute + TrafficSplit
+# -------------------------------
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: app2-canary-ingress
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: PathPrefix(`/app1`)
+    kind: Rule
+    services:
+    - name: app1
+      port: 80
+  - match: PathPrefix(`/app2`)
+    kind: Rule
+    services:
+    - name: app2-stable-svc
+      port: 80
+      weight: 80
+    - name: app2-canary-svc
+      port: 80
+      weight: 20
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: external-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.123.123.200-10.123.123.210
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-metalb
+  namespace: metallb-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-custom-mlb
+  namespace: kube-system
+spec:
+  loadBalancerIP: 10.123.123.210
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8000
+  selector:
+    app.kubernetes.io/name: traefik
+  type: LoadBalancer
+---
+apiVersion: split.smi-spec.io/v1alpha2
+kind: TrafficSplit
+metadata:
+  name: app2-split
+  namespace: default
+spec:
+  service: app2
+  backends:
+  - service: app2-stable-svc
+    weight: 80
+  - service: app2-canary-svc
+    weight: 20
+---
