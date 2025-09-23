@@ -60,16 +60,20 @@ This page is also:
 	* 8.4. [IngressRoute (traefik)](#IngressRoutetraefik)
 * 9. [Linkerd](#Linkerd)
 	* 9.1. [Installation](#Installation)
-	* 9.2. [Linkerd prox injection for app1 and app2](#Linkerdproxinjectionforapp1andapp2)
-	* 9.3. [Tests](#Tests)
-* 10. [Metallb Troubleshooting tips](#MetallbTroubleshootingtips)
-	* 10.1. [Presentation](#Presentation)
-	* 10.2. [Change log level](#Changeloglevel)
-	* 10.3. [Trace VIP ownership](#TraceVIPownership)
-	* 10.4. [ARP responder function](#ARPresponderfunction)
-	* 10.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
-		* 10.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
-		* 10.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
+	* 9.2. [Linkerd proxy injection for app1 and app2](#Linkerdproxyinjectionforapp1andapp2)
+	* 9.3. [Tests and observations](#Testsandobservations-1)
+	* 9.4. [Linkerd and Traefik (Ingress) integration](#LinkerdandTraefikIngressintegration)
+* 10. [Canary deployments](#Canarydeployments)
+	* 10.1. [Background](#Background-1)
+	* 10.2. [Deployment and tests](#Deploymentandtests)
+* 11. [Metallb Troubleshooting tips](#MetallbTroubleshootingtips)
+	* 11.1. [Presentation](#Presentation)
+	* 11.2. [Change log level](#Changeloglevel)
+	* 11.3. [Trace VIP ownership](#TraceVIPownership)
+	* 11.4. [ARP responder function](#ARPresponderfunction)
+	* 11.5. [What happens in case of failure ?](#Whathappensincaseoffailure)
+		* 11.5.1. [POD RUNNING but has no READY container](#PODRUNNINGbuthasnoREADYcontainer)
+		* 11.5.2. [POD RUNNING but container transitions from READY to NOT READY](#PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -3633,7 +3637,7 @@ linkerd          linkerd-identity-875f6d59d-bnsr4          2/2     Running     0
 linkerd          linkerd-proxy-injector-5f8ccd494f-9nvkg   2/2     Running     0          46m
 ubuntu@vm1:~$ 
 ```
-###  9.2. <a name='Linkerdproxinjectionforapp1andapp2'></a>Linkerd proxy injection for app1 and app2
+###  9.2. <a name='Linkerdproxyinjectionforapp1andapp2'></a>Linkerd proxy injection for app1 and app2
 
 This kubernetes deployment is based on the traefic testing in [traefik section](#Deployment).
 The base deployment with traefik and linkerd can be rolled-out via the following manifest. It has the topology with [IngressRoute](#IngressRoutetraefik) and linkerd for app1 and app2.
@@ -3700,7 +3704,7 @@ The ports have the following functions:
 /// 
 ```
 
-###  9.3. <a name='Tests'></a>Tests and observations
+###  9.3. <a name='Testsandobservations-1'></a>Tests and observations
 
 Trafic generation for E/W is generated from a pod in app1 (app1-7d54584bb9-cbhz2) to the app2 service via curl.
 
@@ -3924,16 +3928,192 @@ connect(21, {sa_family=AF_INET, sin_port=htons(4143), sin_addr=inet_addr("10.42.
 
 ```
 
-### Linkerd and Traefik (Ingress) integration 
+###  9.4. <a name='LinkerdandTraefikIngressintegration'></a>Linkerd and Traefik (Ingress) integration 
 
-The deployment for this test is 
-## Canary deployments
+The manifest below combines traefik and linkerd based on deployment previous chapters.
 
-### Background 
+```
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/nginx-traefik_linkerd.yaml
+```
+
+Again, we can see the following:
+- app1/app2 deployments with services and linkerd proxy (2/2)
+- custom metallb service to reach the traefik proxy 10.123.123.210
+- ingress routes to steer traffic to app1 or app2 based on endpoints /app1 and /app2
+
+```
+ubuntu@vm1:~$ kubectl get pods 
+NAME                    READY   STATUS    RESTARTS   AGE
+app1-59b6b986c8-7xzkr   2/2     Running   0          2m22s
+app1-59b6b986c8-ktltw   2/2     Running   0          2m22s
+app1-59b6b986c8-r7fqc   2/2     Running   0          2m22s
+app2-57f4c48557-9wrpw   2/2     Running   0          2m22s
+app2-57f4c48557-pndtz   2/2     Running   0          2m22s
+app2-57f4c48557-sr78g   2/2     Running   0          2m22s
+
+ubuntu@vm1:~$ kubectl get svc -A -o wide
+NAMESPACE        NAME                        TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                      AGE     SELECTOR
+default          app1                        ClusterIP      10.43.81.176    <none>           80/TCP                       3m45s   app=app1
+default          app2                        ClusterIP      10.43.222.10    <none>           80/TCP                       3m45s   app=app2
+[...]
+kube-system      traefik-custom-mlb          LoadBalancer   10.43.17.17     10.123.123.210   80:31334/TCP                 3m45s   app.kubernetes.io/name=traefik
+[...]]
+ubuntu@vm1:~$ 
+ubuntu@vm1:~$ curl 10.123.123.210/app1
+Welcome to NGINX!
+Application:       app1
+Pod Name:          app1-59b6b986c8-ktltw
+IP:                10.42.3.23
+RequestPort:       8080
+ubuntu@vm1:~$ curl 10.123.123.210/app2
+Welcome to NGINX!
+Application:       app2
+Pod Name:          app2-57f4c48557-pndtz
+IP:                10.42.0.36
+RequestPort:       8080
+ubuntu@vm1:~$ 
+```
+
+We can easily check that trafic is no encrypted from the traefik proxy to the backend pods. 
+
+```
+//
+// Call app1 
+//
+ubuntu@vm1:~$
+ubuntu@vm1:~$  curl 10.123.123.210/app1
+Welcome to NGINX!
+Application:       app1
+Pod Name:          app1-59b6b986c8-7xzkr
+IP:                10.42.1.28
+RequestPort:       8080
+
+//
+// Sidenote: we can keep track of inbound  connection with logs at traefik (severity changed to debug).
+//
+ubuntu@vm1:~$ kubectl get -n kube-system deployments.apps traefik -o yaml | grep DEB
+        - --log.level=DEBUG
+ubuntu@vm1:~$ kubectl  logs  -n kube-system traefik-fff97d5cf-zgtqb 
+[...]
+2025-09-23T12:09:35Z DBG github.com/traefik/traefik/v3/pkg/server/service/loadbalancer/wrr/wrr.go:213 > Service selected by WRR: http://10.42.1.28:8080 
+//
+//   check the host on which the pod is running to do the tcpdump thing (vm2)
+//
+ubuntu@vm1:~$ kubectl get pods -A -o wide | grep 10.42.1.28
+default          app1-59b6b986c8-7xzkr                     2/2     Running     0          11m     10.42.1.28     vm2    <none>           <none>
+ubuntu@vm1:~$ 
+//
+// vm2 for tcpdump (repeat the curl until you land on the right pod)
+// This is all in clear. 
+// 
+
+ubuntu@vm2:~$ arp -na | grep 10.42.1.28
+? (10.42.1.28) at de:f5:06:89:0d:76 [ether] on cni0
+ubuntu@vm2:~$ bridge fdb | grep  de:f5:06:89:0d:76
+de:f5:06:89:0d:76 dev vethcae2d9be master cni0 
+ubuntu@vm2:~$ sudo tcpdump -vni vethcae2d9be "host 10.42.1.28"
+
+    10.42.1.24.52642 > 10.42.1.28.8080: Flags [P.], cksum 0x17c7 (incorrect -> 0x6387), seq 1:282, ack 1, win 505, options [nop,nop,TS val 4019396603 ecr 732794134], length 281: HTTP, length: 281
+        GET /app1 HTTP/1.1
+        Host: 10.123.123.210
+        User-Agent: curl/7.81.0
+        Accept: */*
+        X-Forwarded-For: 10.42.0.0
+        X-Forwarded-Host: 10.123.123.210
+        X-Forwarded-Port: 80
+        X-Forwarded-Proto: http
+        X-Forwarded-Server: traefik-fff97d5cf-zgtqb
+        X-Real-Ip: 10.42.0.0
+        Accept-Encoding: gzip
+
+05:15:11.583681 IP (tos 0x0, ttl 64, id 64036, offset 0, flags [DF], proto TCP (6), length 314)
+    10.42.1.28.8080 > 10.42.1.24.52642: Flags [P.], cksum 0x17b4 (incorrect -> 0xddbf), seq 1:263, ack 282, win 501, options [nop,nop,TS val 732805915 ecr 4019396603], length 262: HTTP, length: 262
+        HTTP/1.1 200 OK
+        server: nginx/1.29.1
+        date: Tue, 23 Sep 2025 12:15:11 GMT
+        content-type: text/plain
+        content-length: 137
+
+        Welcome to NGINX!
+        Application:       app1
+        Pod Name:          app1-59b6b986c8-7xzkr
+        IP:                10.42.1.28
+        RequestPort:       8080
+
+```
+
+Based [offical documentation](https://linkerd.io/2.18/tasks/using-ingress/), we can configured linkerd proxy in traefik with a special annotation "linkerd.io/inject: ingress".
+
+```
+kubectl patch deployment traefik -n kube-system --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/metadata/annotations/linkerd.io~1inject",
+    "value": "ingress"
+  }
+]'
+```
+
+Ouch it does not work (1/1 READY) !
+```
+ubuntu@vm1:~$ kubectl get pods -A
+NAMESPACE        NAME                                      READY   STATUS      RESTARTS   AGE
+[..]
+kube-system      traefik-5f5bbc6f78-gmwn5                  1/1     Running     0          19s
+```
+It looks like we have some RBAC in the way.
+```
+ubuntu@vm1:~$ kubectl get mutatingwebhookconfigurations linkerd-proxy-injector-webhook-config  -o yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+[...]
+  namespaceSelector:
+    matchExpressions:
+    - key: config.linkerd.io/admission-webhooks
+      operator: NotIn
+      values:
+      - disabled
+    - key: kubernetes.io/metadata.name
+      operator: NotIn
+      values:
+      - kube-system                             <--------------------- This can't work...
+      - cert-manager
+
+```
+Let's patch it
+```
+kubectl patch mutatingwebhookconfiguration linkerd-proxy-injector-webhook-config \
+  --type='json' \
+  -p='[
+    {
+      "op": "remove",
+      "path": "/webhooks/0/namespaceSelector/matchExpressions/1"
+    }
+  ]'
+```
+Et voila !
+```
+ubuntu@vm1:~$ kubectl get pods -A
+[...]
+kube-system      traefik-79d97bf45-4rn67                   2/2     Running     0          40s
+```
+
+And now trafic from traefik is encrypted.
+
+```
+05:48:17.493054 IP (tos 0x0, ttl 62, id 27081, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.0.40.57492 > 10.42.1.28.4143: Flags [S], cksum 0xe774 (correct), seq 4080505652, win 64860, options [mss 1410,sackOK,TS val 3157400166 ecr 0,nop,wscale 7], length 0
+05:48:17.493094 IP (tos 0x0, ttl 64, id 0, offset 0, flags [DF], proto TCP (6), length 60)
+    10.42.1.28.4143 > 10.42.0.40.57492: Flags [S.], cksum 0x15c6 (incorrect -> 0x0061), seq 3470548483, ack 4080505653, win 64308, options [mss 1410,sackOK,TS val 2349871162 ecr 3157400166,nop,wscale 7], length 0
+```
+
+##  10. <a name='Canarydeployments'></a>Canary deployments
+
+###  10.1. <a name='Background-1'></a>Background 
 
 This setup complements sections [linkerd](#linkerd) and [traefik](#traefik). 
 
-### Deployment and tests
+###  10.2. <a name='Deploymentandtests'></a>Deployment and tests
 
 * For traefik, we can quickly check that over 100 connections, 20 were reaching the canary deployment.
 
@@ -3942,9 +4122,9 @@ ubuntu@vm1:~$ for i in {1..100}; do   curl -s http://10.123.123.200/app2 | grep 
      20      60     960
 ```
 
-##  10. <a name='MetallbTroubleshootingtips'></a>Metallb Troubleshooting tips
+##  11. <a name='MetallbTroubleshootingtips'></a>Metallb Troubleshooting tips
 
-###  10.1. <a name='Presentation'></a>Presentation
+###  11.1. <a name='Presentation'></a>Presentation
 
 There is a set of pods  main pods for metallb:
  - controller (deployment): centralized control plane for metallb
@@ -3964,7 +4144,7 @@ speaker-n9cbf                             1/1     Running   0          7d4h   10
 ubuntu@vm1:~$ 
 ```
 
-###  10.2. <a name='Changeloglevel'></a>Change log level
+###  11.2. <a name='Changeloglevel'></a>Change log level
 
 You can change log verbosity in controller to debug:
 ```
@@ -3996,7 +4176,7 @@ kind: DaemonSet
         env:
 ```
 
-###  10.3. <a name='TraceVIPownership'></a>Trace VIP ownership
+###  11.3. <a name='TraceVIPownership'></a>Trace VIP ownership
 
 Check which worker is responsible for the VIP.
 
@@ -4009,7 +4189,7 @@ ubuntu@vm1:~$ kubectl logs -n metallb-system speaker-5dbng | grep serviceAnnounc
 {"caller":"main.go:409","event":"serviceAnnounced","ips":["1.2.3.4"],"level":"info","msg":"service has IP, announcing","pool":"sctp-external-pool","protocol":"layer2","ts":"2025-02-01T18:04:08Z"}
 ```
 
-###  10.4. <a name='ARPresponderfunction'></a>ARP responder function
+###  11.4. <a name='ARPresponderfunction'></a>ARP responder function
 
 All speaker have ARP responder function activated. However, only the VIP master (cf previous section) will respond to ARP requests. 
 
@@ -4048,9 +4228,9 @@ tcpdump: listening on ens3.100, link-type EN10MB (Ethernet), snapshot length 262
 04:16:58.115241 52:54:00:b2:5b:52 > 52:54:00:41:4c:72, ethertype ARP (0x0806), length 60: Ethernet (len 6), IPv4 (len 4), Reply 10.123.123.100 is-at 52:54:00:b2:5b:52, length 46
 ```
 
-###  10.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
+###  11.5. <a name='Whathappensincaseoffailure'></a>What happens in case of failure ?
 
-####  10.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
+####  11.5.1. <a name='PODRUNNINGbuthasnoREADYcontainer'></a>POD RUNNING but has no READY container
 
 The intent of this test is to verify whether Metallb checks for pod readyness (READY state in pod) to advertise the VIP and respond to ARP request (L2 mode). 
 
@@ -4109,7 +4289,7 @@ ubuntu@vm-ext:~$ arp -na
 
 ```
 
-####  10.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
+####  11.5.2. <a name='PODRUNNINGbutcontainertransitionsfromREADYtoNOTREADY'></a>POD RUNNING but container transitions from READY to NOT READY 
 
 This is a slight variation of previous test to see how Metallb reacts on pod change.
 
