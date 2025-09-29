@@ -7,6 +7,9 @@ This repo focuses on the integration of services in kubernetes from basic cluste
 -  Metallb and SCTP support
 -  externaltrafficpolicy local/cluster knob for loadbalancer services
 -  RHOCP integration
+-  egressIP
+-  ingress with traefik
+-  E/W encryption with linkerd  
 
 This page is also:
 - a quick copy-paste source for rapidly bringing up test scenarios.
