@@ -86,7 +86,13 @@ This page is also:
 
 I just start with an ubuntu server with:
 - multipass installed (by default on ubuntu)
-- a keypair in .ssh/ (id_rsa.pub) so we can simply access VMs
+- a keypair in .ssh/ (id_rsa.pub) so we can simply access VMs. Use ssh-keygen if not created.
+
+
+```console
+ubuntu@clab1866node01:~$ ls .ssh/
+authorized_keys  id_rsa           id_rsa.pub
+```
 
 ##  3. <a name='VMandClusterdeployment'></a>VM and Cluster deployment 
 
