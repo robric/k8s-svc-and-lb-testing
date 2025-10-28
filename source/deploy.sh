@@ -2,25 +2,49 @@
 
 # Create cloud-init.yaml
 
-cat > cloud-init.yaml <<EOF
+#!/bin/bash
+
+NUM_NODES=3
+VM_NAMES=("vm1" "vm2" "vm3" "vm-ext")
+
+for i in ${!VM_NAMES[@]}; do
+  IP="10.123.123.$((i + 1))"  # Assign IPs sequentially
+  cloud_init_file="cloud-init-${VM_NAMES[$i]}.yaml"
+  
+  cat > $cloud_init_file << EOF
 #cloud-config
 users:
   - default
   - name: ubuntu
     ssh-authorized-keys:
       - $(cat ~/.ssh/id_rsa.pub)
+#cloud-config
+network:
+  config: disabled
+write_files:
+  - path: /etc/netplan/01-netcfg.yaml
+    content: |
+      network:
+        version: 2
+        ethernets:
+          ens3:
+            dhcp4: true
+        vlans:
+          ens3.100:
+            id: 100
+            link: ens3
+            addresses:
+              - $IP/24
 runcmd:
- - echo 'source <(kubectl completion bash)' >> /home/ubuntu/.bashrc
+  - echo 'source <(kubectl completion bash)' >> /home/ubuntu/.bashrc
+  - rm -f /etc/netplan/50-cloud-init.yaml
+  - netplan apply
 EOF
 
-
-# Define variable and launch VMs
-
-NUM_NODES=3
-
-for i in $(seq 1 $NUM_NODES); do
-  multipass launch --name "vm$i" --mem 8G --disk 30G --cpus 4 jammy --cloud-init cloud-init.yaml
+  # Launch VM using the generated cloud-init file
+  multipass launch --name "${VM_NAMES[$i]}" --mem 8G --disk 30G --cpus 4 jammy --cloud-init $cloud_init_file
 done
+
 
 # Get IP address of the first node
 
@@ -57,7 +81,6 @@ echo "Redundant K3s cluster deployment completed: vm1, vm2, vm3."
 
 echo "Adding external VM for testings..."
 
-multipass launch --name "vm-ext" --mem 2G --disk 30G --cpus 1 jammy --cloud-init cloud-init.yaml
 multipass exec vm-ext -- sudo apt install lksctp-tools -y
 multipass exec vm-ext -- bash -c 'curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" sh -'
 multipass exec vm-ext -- sudo ip addr add 5.6.7.8/32 dev lo
@@ -83,30 +106,3 @@ echo "Adding external network to the cluster..."
 sudo ip link add link mpqemubr0 name mpqemubr0.100 type vlan id 100
 sudo ip link set mpqemubr0.100 up
 sudo ip addr add 10.123.123.254/24 dev mpqemubr0.100
-
-
-# add vlan 100 on each vm inerface.
-
-echo "Adding vlan 100 via interface ens3.100..."
-multipass exec vm1 -- sudo ip link add link ens3 name ens3.100 type vlan id 100
-multipass exec vm2 -- sudo ip link add link ens3 name ens3.100 type vlan id 100
-multipass exec vm3 -- sudo ip link add link ens3 name ens3.100 type vlan id 100
-multipass exec vm-ext -- sudo ip link add link ens3 name ens3.100 type vlan id 100
-
-sleep 3
-
-echo "Adding IP addresses..."
-multipass exec vm1 -- sudo ip addr add 10.123.123.1/24 dev ens3.100
-multipass exec vm2 -- sudo ip addr add 10.123.123.2/24 dev ens3.100
-multipass exec vm3 -- sudo ip addr add 10.123.123.3/24 dev ens3.100
-multipass exec vm-ext -- sudo ip addr add 10.123.123.4/24 dev ens3.100
-
-sleep 3
-
-echo "Bringing up interfaces..."
-multipass exec vm1 -- sudo ip link set dev ens3.100 up
-multipass exec vm2 -- sudo ip link set dev ens3.100 up
-multipass exec vm3 -- sudo ip link set dev ens3.100 up
-multipass exec vm-ext -- sudo ip link set dev ens3.100 up
-
-echo "External network added to the cluster."
