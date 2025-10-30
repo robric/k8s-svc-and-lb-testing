@@ -88,13 +88,14 @@ I just start with an ubuntu server with:
 - multipass installed (by default on ubuntu)
 - a keypair in .ssh/ (id_rsa.pub) so we can simply access VMs. Use ssh-keygen if not created.
 
-
 ```console
 ubuntu@clab1866node01:~$ ls .ssh/
 authorized_keys  id_rsa           id_rsa.pub
 ```
 
-##  3. <a name='VMandClusterdeployment'></a>VM and Cluster deployment 
+##  3. <a name='VMandClusterdeployment'></a>Cluster deployment 
+
+### 3.1 VM (Multipass)
 
 The testings are based on a deployment of 4 VMs via multipass and additional networking.
 - 1 Cluster made up of 3 vms (k3s).
@@ -174,6 +175,11 @@ vm3    Ready    <none>                 22h   v1.29.5+k3s1
 vm2    Ready    <none>                 22h   v1.29.5+k3s1
 ubuntu@vm1:~$ 
 ```
+
+### k3d deployment (beta)
+
+This deployment set-up is an alternative to the VM-based deployment.
+
 
 ##  4. <a name='K8sbasicservicedeploymentandroutinganalysis'></a> K8s basic service deployment and routing analysis
 

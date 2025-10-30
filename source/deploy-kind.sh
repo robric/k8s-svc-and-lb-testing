@@ -5,6 +5,7 @@ set -e
 CLUSTER_NAME="foo"
 EXTERNAL_NET="external-network"
 EXTERNAL_SUBNET="10.123.123.0/24"
+EXTERNAL_GATEWAY="10.123.123.254"
 KIND_BASE_IMAGE="kindest/node:v1.34.0"
 
 echo "[INFO] Updating system and installing docker..."
@@ -58,12 +59,22 @@ fi
 
 # 4. Create external VLAN network
 
-if (docker network inspect $EXTERNAL_NET &>/dev/null); then
+# Ensure Docker daemon is running before checking/creating the network.
+
+if ! sudo systemctl is-active --quiet docker; then
+  echo "[INFO] Docker daemon is not active. Attempting to start docker..."
+  sudo systemctl start docker || true
+fi
+
+# Use docker's filter to check for an exact name match for external network
+
+if sudo docker network ls -q -f "name=^${EXTERNAL_NET}$" | grep -q .; then
   echo "[INFO] Docker network '$EXTERNAL_NET' already exists. Skipping creation."
 else
   echo "[INFO] Creating external VLAN network '$EXTERNAL_NET'..."
-  docker network create --subnet=$EXTERNAL_SUBNET $EXTERNAL_NET
+  sudo docker network create $EXTERNAL_NET --subnet=$EXTERNAL_SUBNET --gateway=$EXTERNAL_GATEWAY
 fi
+
 
 # 5. Create kind cluster
 echo "[INFO] Customizing kind base image with better tooling !"
@@ -81,13 +92,13 @@ RUN apt-get update \\
   && rm -rf /var/lib/apt/lists/*
 EOF
 
-docker build -t "${KIND_BASE_IMAGE}-custom" "$TMPDIR"
+sudo docker build -t "${KIND_BASE_IMAGE}-custom" "$TMPDIR"
 rm -rf "$TMPDIR"
 
 echo "[INFO] Custom kind node image built and tagged as ${KIND_BASE_IMAGE}"
 echo "[INFO] Creating kind cluster with 3 nodes (node-[1..3])"
 
-kind create cluster --name "$CLUSTER_NAME" --image "${KIND_BASE_IMAGE}-custom" --config - <<EOF
+sudo kind create cluster --name "$CLUSTER_NAME" --image "${KIND_BASE_IMAGE}-custom" --config - <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
@@ -111,21 +122,38 @@ nodes:
           name: node-3
 EOF
 
+echo "[INFO] Create kubeconfig for current user"
+
+# Create the .kube directory if it doesn't exist
+mkdir -p $HOME/.kube
+
+# Copy the Kind config to the default kubectl location
+sudo kind get kubeconfig --name "$CLUSTER_NAME" > $HOME/.kube/config
+
+# Set correct permissions
+sudo chmod 600 $HOME/.kube/config
+
 # 6. Install MetalLB
 
 echo "[INFO] Attaching External Network with IP address 10.123.123.node_ID"
 
-docker network connect --ip 10.123.123.1 $EXTERNAL_NET $CLUSTER_NAME-control-plane || true
+sudo docker network connect --ip 10.123.123.1 $EXTERNAL_NET $CLUSTER_NAME-control-plane || true
 
-docker network connect --ip 10.123.123.2 $EXTERNAL_NET $CLUSTER_NAME-worker || true
+sudo docker network connect --ip 10.123.123.2 $EXTERNAL_NET $CLUSTER_NAME-worker || true
  
-docker network connect --ip 10.123.123.3 $EXTERNAL_NET $CLUSTER_NAME-worker2 || true
+sudo docker network connect --ip 10.123.123.3 $EXTERNAL_NET $CLUSTER_NAME-worker2 || true
 
 # 7. Install MetalLB
 
 echo "[INFO] Installing MetalLB..."
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+sudo kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
 
 echo "[INFO] Waiting for MetalLB pods..."
-kubectl wait --namespace metallb-system --for=condition=Ready pods --all --timeout=120s
+sudo kubectl wait --namespace metallb-system --for=condition=Ready pods --all --timeout=120s
+
+# 8. Create external client container
+echo "[INFO] Creating external client container..."
+sudo docker run -dit --name external --network $EXTERNAL_NET --ip 10.123.123.4 ubuntu:latest sh
+
+echo "[INFO] Setup complete!"
 
