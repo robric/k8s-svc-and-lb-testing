@@ -101,7 +101,7 @@ authorized_keys  id_rsa           id_rsa.pub
 ```
 ###  2.2 Kind (e.g. WSL)
 
-Just and ubuntu image like WSL (tested here jammy Ubuntu)
+Just an ubuntu image like provided by WSL (tested here jammy Ubuntu)
 
 ##  3. <a name='VMandClusterdeployment'></a>Cluster deployment 
 
