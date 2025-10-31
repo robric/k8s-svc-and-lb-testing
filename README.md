@@ -84,7 +84,14 @@ This page is also:
 
 ##  2. <a name='Prerequisites'></a>Prerequisites
 
-I just start with an ubuntu server with:
+I just start with an ubuntu server (jammy). Most of the testing have been executed on VM-based deployment 
+
+###  2.1 VM deployment
+
+This setup is the baseline for most of the testing and outputs.
+
+For VM deployment, you just need the following:
+
 - multipass installed (by default on ubuntu)
 - a keypair in .ssh/ (id_rsa.pub) so we can simply access VMs. Use ssh-keygen if not created.
 
@@ -92,6 +99,9 @@ I just start with an ubuntu server with:
 ubuntu@clab1866node01:~$ ls .ssh/
 authorized_keys  id_rsa           id_rsa.pub
 ```
+###  2.2 Kind (e.g. WSL)
+
+Just and ubuntu image like WSL (tested here jammy Ubuntu)
 
 ##  3. <a name='VMandClusterdeployment'></a>Cluster deployment 
 
@@ -147,7 +157,7 @@ External VM:
 ```
 To deploy this, just run the following command. It will deploy the network plumbing and vms.
 ```
-curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/deploy.sh | sh
+curl -sSL https://raw.githubusercontent.com/robric/multipass-3-node-k8s/main/source/deploy.sh | bash
 ```
 You'll get the 4 VMs with kubernetes running (k3s inside)
 ```console
@@ -176,10 +186,56 @@ vm2    Ready    <none>                 22h   v1.29.5+k3s1
 ubuntu@vm1:~$ 
 ```
 
-### k3d deployment (beta)
+### kind deployment (beta)
 
 This deployment set-up is an alternative to the VM-based deployment.
 
+The following script deploys kind with a 3-cluster node and handy tooling to explore the internals of kubernetes (enhanced) services.
+
+```
+curl -sSL https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/deploy-kind.sh | bash 
+```
+Notably:
+- Kind images augmented with tcpdumps, net-tools (arp), 
+- Aliases conn_node-x to connect each node.
+
+
+```
+Networks:
+- native network for kind
+- external network on dedicated bridge (10.123.123.0/24). 
+
+Kubernetes Cluster nodes:
+- node-1: master/worker - External IP address = 10.123.123.1/24
+- node-2: worker - External IP address = 10.123.123.2/24
+- node-3: worker - External IP address = 10.123.123.3/24
+
+External Node: 
+- node-ext: External IP address = 10.123.123.4/24
+
+            +----------------------------------------------+    
+            |                   Cluster                    |    
+            |                                              |     
+            |    MASTER                                    |
+            |      +                                       |   External VM
+            |     worker          worker        worker     |         
+            | +------------+ +------------+ +------------+ | +------------+  
+            | |   node-1   | |  node-2    | |  node-3    | | |  node-ext  |   
+            | +----ens3----+ +---ens3-----+ +---ens3-----+ | +----ens3----+  
+            |      :  |.1/24      :  |.2/24      :  |.3/24 |       :  |.4/24   
+            +------:--|-----------:--|-----------:--|------+       :  |
+                   :  |           :  |           :  |              :  |         
+                   :  |           :  |           :  |              :  |    
+                   :  |           :  |           :  |              :  |    
+                   :  +=========vlan +100 (external)+=================+    
+                   :              10.123.123.0/24:  |              :
+                   :              :              :  |              :   
+                   :              :              :  |              : 
+                   :              :              :  |              : 
+                   :              :              :  |              :                      
+             ------+------ native +vlan(internal)+-----------------+               
+
+```
 
 ##  4. <a name='K8sbasicservicedeploymentandroutinganalysis'></a> K8s basic service deployment and routing analysis
 
