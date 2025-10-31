@@ -30,13 +30,14 @@ spec:
           export POD_NAME
           export POD_IP
           export APP_NAME
+          export NODE_NAME
           cat <<EOF > /nginx/nginx.conf
           server {
-              listen 8080;
+              listen 80;
               server_name localhost;
               location / {
                   default_type text/plain;
-                  return 200 "Welcome to NGINX!\nApplication:       $APP_NAME\nPod Name:          $POD_NAME\nIP:                $POD_IP\nRequestPort:       \$server_port\n";
+                  return 200 "Welcome to NGINX!\nApplication:       $APP_NAME\nPod Name:          $POD_NAME\nNode Name:         $NODE_NAME\nIP:                $POD_IP\nRequestPort:       \$server_port\n";
               }
           }
           EOF
@@ -51,6 +52,11 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
         - name: APP_NAME
           valueFrom:
             fieldRef:

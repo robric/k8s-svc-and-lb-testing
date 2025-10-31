@@ -133,6 +133,9 @@ sudo kind get kubeconfig --name "$CLUSTER_NAME" > $HOME/.kube/config
 # Set correct permissions
 sudo chmod 600 $HOME/.kube/config
 
+# Set correct permissions
+sudo kubectl taint nodes node-1 node-role.kubernetes.io/control-plane:NoSchedule-
+
 echo "[INFO] Fixing bashrc to get aliases and kubectl completion"
 
 echo 'source <(kubectl completion bash)' >> $HOME/.bashrc
@@ -163,4 +166,9 @@ echo "[INFO] Creating external client container..."
 sudo docker run -dit --name external --network $EXTERNAL_NET --ip 10.123.123.4 ubuntu:latest sh
 
 echo "[INFO] Setup complete!"
+
+echo "[INFO] Seploying nginx service..."
+
+kubectl apply -f https://raw.githubusercontent.com/robric/k8s-svc-and-lb-testing/refs/heads/main/source/nginx-kick.yaml
+
 
