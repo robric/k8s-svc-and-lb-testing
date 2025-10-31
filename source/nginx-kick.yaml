@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app2
+  name: kickass-nginx
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: app2
+      app: kickass-nginx
   template:
     metadata:
       labels:
-        app: app2
+        app: kickass-nginx
     spec:
       containers:
       - image: nginx:latest

@@ -186,7 +186,7 @@ vm2    Ready    <none>                 22h   v1.29.5+k3s1
 ubuntu@vm1:~$ 
 ```
 
-### kind deployment (beta)
+### kind deployment
 
 This deployment set-up is an alternative to the VM-based deployment.
 
@@ -236,6 +236,18 @@ External Node:
              ------+------ native +vlan(internal)+-----------------+               
 
 ```
+
+Ultimately a cluster made up of 3 nodes is deployed.
+
+```
+ubuntu@C-5CG53743Q8:~$ kubectl get nodes
+NAME     STATUS   ROLES           AGE   VERSION
+node-1   Ready    control-plane   18h   v1.34.0
+node-2   Ready    <none>          18h   v1.34.0
+node-3   Ready    <none>          18h   v1.34.0
+ubuntu@C-5CG53743Q8:~$
+```
+
 
 ##  4. <a name='K8sbasicservicedeploymentandroutinganalysis'></a> K8s basic service deployment and routing analysis
 

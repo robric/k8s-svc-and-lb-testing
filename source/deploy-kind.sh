@@ -133,6 +133,13 @@ sudo kind get kubeconfig --name "$CLUSTER_NAME" > $HOME/.kube/config
 # Set correct permissions
 sudo chmod 600 $HOME/.kube/config
 
+echo "[INFO] Fixing bashrc to get aliases and kubectl completion"
+
+echo 'source <(kubectl completion bash)' >> $HOME/.bashrc
+# echo "alias node-1='docker exec -it foo-control-plane bash -c '\''export PS1=\"(node-1) \u@\h:\w\$ \"; exec bash'\'''" >> ~/.bashrc
+# echo "alias node-2='docker exec -it foo-worker bash -c '\''export PS1=\"(node-2) \u@\h:\w\$ \"; exec bash'\'''" >> ~/.bashrc
+# echo "alias node-3='docker exec -it foo-worker2 bash -c '\''export PS1=\"(node-3) \u@\h:\w\$ \"; exec bash'\'''" >> ~/.bashrc
+
 # 6. Install MetalLB
 
 echo "[INFO] Attaching External Network with IP address 10.123.123.node_ID"
