@@ -70,3 +70,16 @@ spec:
       volumes:
       - emptyDir: {}
         name: nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kickass-svc
+spec:
+  selector:
+    app: kickass-nginx
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
