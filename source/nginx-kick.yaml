@@ -83,3 +83,20 @@ spec:
       port: 80
       targetPort: 80
   type: ClusterIP
+  type: LoadBalancer
+  loadBalancerIP: 10.123.123.100
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: external-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.123.123.64/26
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-metalb
+  namespace: metallb-system
